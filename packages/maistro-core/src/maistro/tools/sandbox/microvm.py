@@ -20,6 +20,7 @@ from typing import Literal, Protocol, runtime_checkable
 
 from maistro.config.settings import SandboxSettings
 from maistro.security.dangerous_tools import is_dangerous_command
+from maistro.tools.sandbox.env_sanitize import sanitize_env
 
 NetworkMode = Literal["none", "restricted"]
 
@@ -49,7 +50,11 @@ class MicroVMConfig:
     @classmethod
     def from_settings(cls, settings: SandboxSettings) -> MicroVMConfig:
         return cls(
-            rootfs_image=settings.image,
+            # NOT settings.image: that is a Docker/OCI reference, and a VMM boots
+            # a kernel + ext4 rootfs. Handing Firecracker an OCI ref produces an
+            # unbootable VM (Codex, #262).
+            kernel_image=settings.vm_kernel_image,
+            rootfs_image=settings.vm_rootfs_image,
             vcpus=settings.cpu_count,
             memory_mib=_parse_mib(settings.memory_limit),
             network="none" if settings.network_disabled else "restricted",
@@ -91,6 +96,7 @@ class MicroVMSandbox:
         config: MicroVMConfig | None = None,
         workspace: str = ".",
         env: dict[str, str] | None = None,
+        trusted_env: dict[str, str] | None = None,
     ) -> None:
         from maistro.tools.sandbox.workspace import validate_workspace_path
 
@@ -104,7 +110,21 @@ class MicroVMSandbox:
         # and an mkdir here fails on hosts where the allowlist root itself
         # needs privileges to create (CI runners).
         self._workspace = str(validate_workspace_path(workspace))
-        self._env = dict(env or {})
+        # Two channels, because the guest legitimately needs both and they carry
+        # different trust:
+        #
+        # `env` may be ambient or request-derived, so it is allowlist-sanitized
+        # exactly as the Docker backend does. Unfiltered, it carried host and
+        # request-derived secrets (AWS_*, OPENAI_API_KEY, ...) across the VM
+        # boundary (Codex, #262).
+        #
+        # `trusted_env` is passed verbatim. It exists because a harness provider
+        # must provision its own credential into the guest to work at all — see
+        # `opencode_microvm_factory`, whose whole purpose is carrying opencode's
+        # provider key. Sanitizing that would not close a hole, it would just
+        # break the harness. Keeping it a separate, explicitly named parameter
+        # means every call site that trusts a secret into a VM says so.
+        self._env = {**sanitize_env(dict(env or {})), **dict(trusted_env or {})}
 
     @property
     def config(self) -> MicroVMConfig:

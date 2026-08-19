@@ -64,6 +64,9 @@ Accepted AttemptResult/NodeRun outcome separation adds nine maistro-core node
 IDs. Durable execution-lease fencing adds five more maistro-core node IDs.
 Authoritative TraversalCommit/TraversalCheckpoint contracts add eleven
 maistro-core node IDs.
+PR #447 adds six maistro-core node IDs covering checkpoint-bridged traversal
+history, reuse of frozen execution state across transitions, and rejection of
+execution continuation after an accepted logical completion.
 Stream 1 adds 99 maistro-core node IDs for the canonical Project,
 Run/NodeRun/Attempt, runtime, persistence, and execution-service contracts.
 Stream 6 adds five provider-parity node IDs.
@@ -79,21 +82,25 @@ node IDs, including checkpoint cache stability, complete-row-only baseline
 aggregation, and single-tool-fingerprint sweep validation.
 Workspace creation was deliberately moved out of the scope-gated parametrized
 Hive cases and into the ordinary product-surface check, so Hive loses one
-collected node ID while retaining the intended assertion. Other suite counts are
-unchanged.
+collected node ID while retaining the intended assertion. Durable approval
+coverage now includes stateful policy charging of human-approved effects before
+provider dispatch. The Graph capability-effect adapter adds one maistro-core
+node ID, covering the pause-then-resume path: the first Attempt pauses with
+durable approval provenance and the second executes the approved effect without
+a duplicate approval or Invocation. Other suite counts are unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 6173 | `ci.yml` |
+| `packages/maistro-core/tests` | 6238 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
 | `packages/maistro-turing/tests` | 176 | `ci.yml` |
 | `packages/maistro-design/tests` | 156 | `ci.yml` |
-| `packages/maistro-bootstrap/tests` | 123 | `ci.yml` |
+| `packages/maistro-bootstrap/tests` | 124 | `ci.yml` |
 | `packages/maistro-canvas/tests` | 124 | `ci.yml` |
 | `packages/maistro-turing/backend/tests` | 26 | `ci.yml` (own invocation) |
-| `tests/` (root) | 641 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
+| `tests/` (root) | 663 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
 | `formal/` | 417 | `formal-conformance.yml` + `quality.yml` Pillar 2 |
 | `packages/hive-conductor/backend/tests` | 1233 | `ci.yml` (bare python) |
 | `packages/hive-conductor/tests/e2e` | 24 | `ci.yml` `hive-conductor-e2e` (docker-compose) |

@@ -15,8 +15,22 @@
   UNIX username" first-run prompt and the docker group dance; this distro is
   treated as a single-purpose runtime for the engine, not a general dev box.
 
+.PARAMETER Version
+  Release tag to install, e.g. v1.0.0 or v1.0.0-rc1 (a bare 1.0.0 is
+  normalized to v1.0.0). Wins over -Channel and -Branch. Default: unset, which
+  means "latest published release" (see -Channel).
+
+.PARAMETER Channel
+  'stable' (default) resolves the latest published release tag via the GitHub
+  API; 'dev' installs the 'develop' branch, for contributors.
+
 .PARAMETER Branch
-  maistro-engine branch to install (default: main).
+  maistro-engine branch to install. Default: unset — an explicit branch is a
+  development override, not the normal path. Ignored when -Version is given.
+
+.PARAMETER RequireRelease
+  Fail instead of falling back to a branch when no release tag can be
+  resolved.
 
 .PARAMETER Repo
   GitHub "owner/repo" to install from (default: BlakeMatthews-dev/maistro-engine).
@@ -40,12 +54,22 @@
 
 .EXAMPLE
   .\get.ps1 -AutoInstallDeps
+
+.EXAMPLE
+  .\get.ps1 -Version v1.0.0
+
+.EXAMPLE
+  .\get.ps1 -Channel dev
 #>
 [CmdletBinding()]
 param(
-    [string]$Branch = 'main',
+    [string]$Version = '',
+    [ValidateSet('stable', 'dev')]
+    [string]$Channel = 'stable',
+    [string]$Branch = '',
     [string]$Repo = 'BlakeMatthews-dev/maistro-engine',
     [string]$Distro = 'Ubuntu',
+    [switch]$RequireRelease,
     [switch]$AutoInstallDeps,
     [switch]$Resume,
     [switch]$SkipWizard,
@@ -55,6 +79,17 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Branch installed when the stable channel has no release to resolve — the same
+# choice get.sh makes, for the same reason (ADR-073126-c4e1 §2 makes `main` the
+# only branch a final release tag may point at).
+$script:NoReleaseFallbackBranch = 'main'
+
+# Resolved by Resolve-InstallRef and used for every raw.githubusercontent.com
+# fetch in this script, so the get.ps1/get.sh pair and the source tree all come
+# from one ref instead of three.
+$script:RefKind = ''
+$script:Ref = ''
 
 function Write-InfoMsg { param([string]$Message) Write-Host "[maistro] $Message" -ForegroundColor Cyan }
 function Write-OkMsg { param([string]$Message) Write-Host "[ok] $Message" -ForegroundColor Green }
@@ -69,6 +104,76 @@ function Confirm-Action {
     }
     $reply = Read-Host "$Prompt [y/N]"
     return $reply -match '^[Yy]'
+}
+
+# `1.0.0` and `v1.0.0` name the same release to a human; only one is a real ref.
+function Format-VersionTag {
+    param([string]$Value)
+    if ($Value -like 'v*') { return $Value }
+    return "v$Value"
+}
+
+# Latest published release tag, or $null when there is none / the API is
+# unreachable. /releases/latest excludes prereleases and drafts by design: an
+# rc must be asked for by name, never handed to someone who ran the one-liner.
+function Get-LatestReleaseTag {
+    $uri = "https://api.github.com/repos/$Repo/releases/latest"
+    $headers = @{ 'Accept' = 'application/vnd.github+json'; 'User-Agent' = 'maistro-get' }
+    $token = if ($env:MAISTRO_GITHUB_TOKEN) { $env:MAISTRO_GITHUB_TOKEN } else { $env:GITHUB_TOKEN }
+    if ($token) { $headers['Authorization'] = "Bearer $token" }
+    try {
+        $release = Invoke-RestMethod -Uri $uri -Headers $headers -UseBasicParsing -TimeoutSec 20
+    } catch {
+        # A 404 here means "no releases yet", which is an expected answer, not
+        # a failure — the caller decides what to do about it.
+        return $null
+    }
+    if ($release -and $release.tag_name) { return [string]$release.tag_name }
+    return $null
+}
+
+# Decide what to install once, up front. Explicit beats implicit: -Version wins
+# over -Branch wins over -Channel. Mirrors resolve_ref() in get.sh — the two
+# entrypoints must agree, or a Windows user and a Linux user running "the same"
+# command get different code.
+function Resolve-InstallRef {
+    if ($Version) {
+        $script:RefKind = 'tag'
+        $script:Ref = Format-VersionTag -Value $Version
+        Write-InfoMsg "Installing release $($script:Ref) (requested explicitly)."
+        return
+    }
+    if ($Branch) {
+        $script:RefKind = 'branch'
+        $script:Ref = $Branch
+        Write-WarnMsg "Installing branch '$Branch' — a branch moves. Use -Version vX.Y.Z for a reproducible install."
+        return
+    }
+    if ($Channel -eq 'dev') {
+        $script:RefKind = 'branch'
+        $script:Ref = 'develop'
+        Write-WarnMsg "Channel 'dev': installing the 'develop' branch. Unreleased code — expect breakage."
+        return
+    }
+
+    $tag = Get-LatestReleaseTag
+    if ($tag) {
+        $script:RefKind = 'tag'
+        $script:Ref = $tag
+        Write-InfoMsg "Installing latest release $tag."
+        return
+    }
+
+    if ($RequireRelease) {
+        Write-ErrMsg "No published release found for $Repo and -RequireRelease was set. Nothing installed."
+        exit 1
+    }
+    $script:RefKind = 'branch'
+    $script:Ref = $script:NoReleaseFallbackBranch
+    Write-WarnMsg "No published release found for $Repo (the GitHub API returned none, or was unreachable)."
+    Write-WarnMsg "Falling back to the '$($script:Ref)' branch, which is where release tags are cut from."
+    Write-WarnMsg "This is NOT a pinned install: '$($script:Ref)' moves. To pin, re-run with -Version vX.Y.Z"
+    Write-WarnMsg "once a release exists, or with -RequireRelease to fail instead of falling back."
 }
 
 function Test-Admin {
@@ -87,7 +192,12 @@ function Save-StableCopy {
     if ($PSCommandPath -and (Test-Path -LiteralPath $PSCommandPath)) {
         Copy-Item -LiteralPath $PSCommandPath -Destination $dest -Force
     } else {
-        $url = "https://raw.githubusercontent.com/$Repo/$Branch/get.ps1"
+        # $script:Ref, not $Branch: after Resolve-InstallRef this is the tag
+        # being installed, so the saved copy (which the elevation relaunch and
+        # the post-reboot resume both execute) is the same revision as the
+        # source tree it will go on to install.
+        $ref = if ($script:Ref) { $script:Ref } else { $script:NoReleaseFallbackBranch }
+        $url = "https://raw.githubusercontent.com/$Repo/$ref/get.ps1"
         Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
     }
     return $dest
@@ -96,7 +206,15 @@ function Save-StableCopy {
 function Get-PassthroughArgs {
     param([switch]$IncludeResume)
     $argList = @()
-    if ($Branch -ne 'main') { $argList += @('-Branch', $Branch) }
+    # Pass the RESOLVED ref, not the raw parameters: a resume that re-resolves
+    # "latest release" could land on a different release than the one the user
+    # started installing before the reboot.
+    if ($script:RefKind -eq 'tag') {
+        $argList += @('-Version', $script:Ref)
+    } elseif ($script:Ref) {
+        $argList += @('-Branch', $script:Ref)
+    }
+    if ($RequireRelease) { $argList += '-RequireRelease' }
     if ($Repo -ne 'BlakeMatthews-dev/maistro-engine') { $argList += @('-Repo', $Repo) }
     if ($Distro -ne 'Ubuntu') { $argList += @('-Distro', $Distro) }
     if ($AutoInstallDeps) { $argList += '-AutoInstallDeps' }
@@ -214,7 +332,15 @@ function Invoke-LinuxInstall {
     Write-InfoMsg "Bootstrapping $Distro (curl/git) and running the engine installer as root..."
     & wsl.exe -d $Distro -u root -- bash -lc 'apt-get update -qq && apt-get install -y -qq curl ca-certificates git'
 
-    $envAssignments = @("MAISTRO_REPO=$Repo", "MAISTRO_BRANCH=$Branch")
+    # Hand get.sh the already-resolved ref rather than re-resolving inside WSL:
+    # two resolutions can disagree (a release published between them), and the
+    # Windows side is where the user's -Version/-Channel intent was expressed.
+    $envAssignments = @("MAISTRO_REPO=$Repo")
+    if ($script:RefKind -eq 'tag') {
+        $envAssignments += "MAISTRO_VERSION=$($script:Ref)"
+    } else {
+        $envAssignments += "MAISTRO_BRANCH=$($script:Ref)"
+    }
     if ($AutoInstallDeps) { $envAssignments += 'MAISTRO_AUTO_INSTALL_DEPS=1' }
     if ($SkipWizard) { $envAssignments += 'MAISTRO_SKIP_WIZARD=1' }
     if ($NoStart) { $envAssignments += 'MAISTRO_START_STACK=0' }
@@ -225,7 +351,9 @@ function Invoke-LinuxInstall {
     if ($env:MAISTRO_SHA256SUMS_URL) { $envAssignments += "MAISTRO_SHA256SUMS_URL=$($env:MAISTRO_SHA256SUMS_URL)" }
     $exports = ($envAssignments | ForEach-Object { "export $_;" }) -join ' '
 
-    $getShUrl = "https://raw.githubusercontent.com/$Repo/$Branch/get.sh"
+    # Fetch get.sh from the ref being installed, so the bootstrapper and the
+    # tree it lays down are the same revision.
+    $getShUrl = "https://raw.githubusercontent.com/$Repo/$($script:Ref)/get.sh"
     $innerCmd = "$exports curl -fsSL $getShUrl | bash"
 
     & wsl.exe -d $Distro -u root -- bash -lc $innerCmd
@@ -246,6 +374,12 @@ function Invoke-Main {
     Write-Host ""
     Write-Host "maistro-engine Windows installer" -ForegroundColor Cyan
     Write-Host "bootstraps WSL2, then hands off to the Linux installer" -ForegroundColor Cyan
+    Write-Host ""
+
+    # Before anything is fetched or saved: Save-StableCopy, Get-PassthroughArgs
+    # and Invoke-LinuxInstall all read $script:Ref.
+    Resolve-InstallRef
+    Write-Host ("{0,-8}{1}" -f "$($script:RefKind):", $script:Ref)
     Write-Host ""
 
     if (Test-DistroUsable -Name $Distro) {

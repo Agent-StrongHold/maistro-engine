@@ -37,11 +37,12 @@ KindCategory = Literal[
 
 
 class NodeContext(BaseModel):
-    """Per-run context handed to every node's :meth:`Node.run`.
+    """Per-execution context handed to every node's :meth:`Node.run`.
 
-    Carries the identifiers the node needs to record outcomes + telemetry,
-    plus the GraphBlackboard so the node can read upstream signals + write
-    annotations downstream nodes will see.
+    Carries logical Run/Node identity plus the canonical NodeRun/Attempt IDs
+    once physical execution begins, so nested capability Invocations can be
+    correlated to the real execution spine. The GraphBlackboard lets the node
+    read upstream signals and write annotations downstream nodes will see.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -49,6 +50,8 @@ class NodeContext(BaseModel):
     run_id: str
     dag_id: str
     node_id: str
+    node_run_id: str = ""
+    attempt_id: str = ""
     user_id: str | None = None
     project_id: str | None = None
     # blackboard kept as Any so we don't force a circular import on

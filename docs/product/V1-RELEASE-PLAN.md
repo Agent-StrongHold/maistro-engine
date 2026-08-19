@@ -412,25 +412,35 @@ exactly `48.0.1`, leaving only patch headroom.
 **Context:** no release workflow exists; ci.yml builds wheels and images and discards them; the
 cosign step is inert; the only image push is manual `deploy.sh` with git-SHA tags.
 
-- [ ] `.github/workflows/release.yml`, `on: push: tags: ['v*']`.
-- [ ] `guard`: tag commit is ancestor of `main` (rc: `integration`); prerelease-aware version
+- [x] `.github/workflows/release.yml`, `on: push: tags: ['v*']`.
+- [x] `guard`: tag commit is ancestor of `main` (rc: `integration`); prerelease-aware version
       check — a final tag `vX.Y.Z` must equal `VERSION` == every package version exactly, while
       an rc tag `vX.Y.Z-rcN` must have base version `X.Y.Z` == `VERSION` (packages stay at the
       final version; the rc suffix lives only in the tag); CHANGELOG has a heading matching the
       base version.
-- [ ] `wheels`: sdist+wheel for the publish set — **maistro-core, maistro-canvas, maistro-evolve,
+- [x] `wheels`: sdist+wheel for the publish set — **maistro-core, maistro-canvas, maistro-evolve,
       maistro-rsi, maistro-bootstrap**; `twine check`; clean-venv install+import smoke.
-- [ ] `pypi`: trusted publishing (OIDC) gated by a `release` GitHub environment approval.
+- [x] `pypi`: trusted publishing (OIDC) gated by a `release` GitHub environment approval.
       Pre-work: register the five names on PyPI; configure trusted publishers.
-- [ ] `images`: build `maistro-engine` + `hive-conductor`; push to ghcr.io tagged `v1.0.0`,
+- [x] `images`: build `maistro-engine` + `hive-conductor`; push to ghcr.io tagged `v1.0.0`,
       `1.0`, `latest`; **cosign sign the pushed digest** (keyless) + in-workflow verify; retire
       or rewire `deploy.sh` onto this path.
-- [ ] `github-release`: release from tag; body = CHANGELOG section + ADR-076 API statement;
+- [x] `github-release`: release from tag; body = CHANGELOG section + ADR-076 API statement;
       artifacts = wheels, sdists, SHA256SUMS, syft SBOMs, installers.
-- [ ] `v*-rc*` tags → TestPyPI + `-rc` image tags only (no `latest`) — enables the G1 dry-run.
+- [x] `v*-rc*` tags → TestPyPI + `-rc` image tags only (no `latest`) — enables the G1 dry-run.
 
 **AC:** a `v1.0.0-rc1` tag produces TestPyPI packages, rc images, and a prerelease GitHub release
 end-to-end with zero manual artifact handling.
+
+> **AC not yet demonstrated.** The workflow is written and statically verified (actionlint +
+> shellcheck, `yaml.safe_load`, unit tests over `scripts/release_guard.py` /
+> `scripts/release_notes.py` in `tests/test_release_guard.py`) but has **never executed**: the
+> repository has zero tags, so nothing has triggered it. Three maintainer-only prerequisites gate
+> the first real run — (1) PyPI + TestPyPI trusted publishers for the five publish-set names,
+> (2) a GitHub `release` environment with a required reviewer, without which the publish jobs run
+> ungated, and (3) `main`/`integration` branch protection, which §2 turns into a release control.
+> Both `release-installer.yml`'s `build-images` job and `packages/hive-conductor/deploy.sh`'s
+> `:latest` push were removed as second publish paths, per ADR-073126-c4e1 §3.
 
 ## E4 — CHANGELOG.md + v1.0.0 release notes (S, dep D3+D5)
 
@@ -452,12 +462,19 @@ end-to-end with zero manual artifact handling.
 **Context:** `get.sh`/`install.sh`/`get.ps1` clone branch `main`; "install v1.0.0" is not
 expressible.
 
-- [ ] `MAISTRO_VERSION` env / `--version` flag; default = latest release tag via GitHub API;
+- [x] `MAISTRO_VERSION` env / `--version` flag; default = latest release tag via GitHub API;
       fetch the tag (or release tarball), not a branch.
-- [ ] Wizard/compose output pins matching `vX.Y.Z` image tags (with E3).
-- [ ] Keep `--channel dev` → `develop` for contributors.
+- [x] Wizard/compose output pins matching `vX.Y.Z` image tags (with E3).
+- [x] Keep `--channel dev` → `develop` for contributors.
 
 **AC:** `MAISTRO_VERSION=v1.0.0-rc1 ./get.sh` on a clean machine installs exactly the rc.
+
+> **No-releases-yet behavior (chosen, implemented):** with no release published, the default
+> `stable` channel prints an explicit four-line warning and installs the `main` branch — the only
+> branch a final release tag may point at (ADR-073126-c4e1 §2) — rather than hard-failing or
+> quietly installing something else. The same path covers an unreachable or rate-limited GitHub
+> API. `--require-release` / `-RequireRelease` / `MAISTRO_REQUIRE_RELEASE=1` converts the fallback
+> into a hard failure for CI and reproducible installs.
 
 ## E6 — ADR: release & versioning process (S, dep E1–E5)
 

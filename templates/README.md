@@ -6,7 +6,7 @@ This directory holds **scaffold** templates for the three product peers. Each su
 - **autonoetic** — `AgentTuring`-shaped knobs.
 - **multi-tenant** — Stronghold-shaped knobs.
 
-Bootstrap round-trip and CI render tests are tracked in [BACKLOG.md](../../BACKLOG.md) (engine-010–012). Expand each template with real `pyproject.toml`, compose, and `src/` overlays in follow-up PRs.
+Bootstrap round-trip and CI render tests are tracked in [BACKLOG.md](../BACKLOG.md) (engine-010–012). Expand each template with real `pyproject.toml`, compose, and `src/` overlays in follow-up PRs.
 
 Use from repo root:
 
