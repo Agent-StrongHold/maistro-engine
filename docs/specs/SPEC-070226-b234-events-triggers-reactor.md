@@ -216,4 +216,4 @@ The `(trigger_id, event_id)` unique key ensures a handler is invoked at most onc
 ## References
 
 - [ADR-086: Events, Triggers, Reactor](../adr/ADR-086-events-triggers-reactor.md)
-- [SPEC-013: Reactor loop](SPEC-013-reactor-loop.md)
+- [SPEC-013: Reactor loop](SPEC-013-1khz-reactor.md)

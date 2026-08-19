@@ -172,8 +172,8 @@ Version evolution handled per ADR-076 (header-based routing in `maistro-server/m
 
 ## References
 
-- [ADR-045: Canvas Studio ↔ maistro-server /v2/canvas Cutover](../adr/ADR-045-canvas-studio-cutover.md)
+- [ADR-045: Canvas Studio ↔ maistro-server /v2/canvas Cutover](../adr/ADR-045-canvas-studio-engine-cutover.md)
 - [ADR-076: HTTP API Versioning via content negotiation](../adr/ADR-076-http-api-versioning.md)
-- [ADR-042: Canvas Asset HTTP Routes](../adr/ADR-042-canvas-asset-http-routes.md)
+- [ADR-042: Canvas Asset HTTP Routes](../adr/ADR-042-canvas-asset-routes.md)
 - [SPEC-229: Canvas asset compositor](SPEC-229-canvas-asset-compositor.md)
 - Canvas Studio frontend (separate repository).
