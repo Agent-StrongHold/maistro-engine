@@ -24,9 +24,9 @@ def _freeze_json(value: object, *, path: str) -> object:
         if not math.isfinite(value):
             raise ValueError(f"{path} must contain only finite JSON numbers")
         return value
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         return tuple(_freeze_json(item, path=f"{path}[]") for item in value)
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         frozen: dict[str, object] = {}
         for key, item in value.items():
             if not isinstance(key, str):
