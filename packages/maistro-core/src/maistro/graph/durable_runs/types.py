@@ -45,9 +45,7 @@ def _validate_graph_links(run: Run, graph_state: GraphExecutionState) -> None:
         raise ValueError("graph_state.run_id must match run.run_id")
     node_ids = {node.node_id for node in run.graph.materialize().nodes}
     if any(node_id not in node_ids for node_id in graph_state.active_node_ids):
-        raise ValueError(
-            "active graph frontier must reference nodes in the Run Graph snapshot"
-        )
+        raise ValueError("active graph frontier must reference nodes in the Run Graph snapshot")
 
 
 def _validate_checkpoint_record(
@@ -182,13 +180,9 @@ def _validate_commit_decisions(
     for decision_id in commit.edge_decision_ids:
         decision = decisions_by_id.get(decision_id)
         if decision is None:
-            raise ValueError(
-                "TraversalCommit routing decisions must exist in GraphExecutionState"
-            )
+            raise ValueError("TraversalCommit routing decisions must exist in GraphExecutionState")
         if decision.source_node_run_id not in source_ids:
-            raise ValueError(
-                "TraversalCommit routing decision must belong to a source NodeRun"
-            )
+            raise ValueError("TraversalCommit routing decision must belong to a source NodeRun")
 
 
 def _validate_traversal_commits(
@@ -201,9 +195,7 @@ def _validate_traversal_commits(
 ) -> None:
     if not commits:
         return
-    if [commit.commit_sequence for commit in commits] != list(
-        range(1, len(commits) + 1)
-    ):
+    if [commit.commit_sequence for commit in commits] != list(range(1, len(commits) + 1)):
         raise ValueError("TraversalCommit sequences must be consecutive from one")
 
     node_runs_by_id = {node_run.node_run_id: node_run for node_run in node_runs}
@@ -230,9 +222,7 @@ def _validate_traversal_commits(
         run.status not in TERMINAL_RUN_STATUSES
         and commits[-1].resulting_frontier != graph_state.active_node_ids
     ):
-        raise ValueError(
-            "latest TraversalCommit frontier must match persisted GraphExecutionState"
-        )
+        raise ValueError("latest TraversalCommit frontier must match persisted GraphExecutionState")
 
 
 class DurableRunRecord(BaseModel):
