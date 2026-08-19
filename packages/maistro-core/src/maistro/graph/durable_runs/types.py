@@ -34,8 +34,7 @@ def _validate_attempt_links(attempts: tuple[Attempt, ...], node_run_ids: set[str
     for attempt in attempts:
         attempts_by_node_run.setdefault(attempt.node_run_id, []).append(attempt.ordinal)
     if any(
-        ordinals != list(range(1, len(ordinals) + 1))
-        for ordinals in attempts_by_node_run.values()
+        ordinals != list(range(1, len(ordinals) + 1)) for ordinals in attempts_by_node_run.values()
     ):
         raise ValueError("Attempt ordinals must be consecutive per NodeRun")
 
@@ -60,8 +59,7 @@ def _validate_checkpoint_record(
     if checkpoint.graph_snapshot_hash != run.graph.content_hash:
         raise ValueError("TraversalCheckpoint graph snapshot must match the Run snapshot")
     if any(
-        node_run_id not in node_run_ids
-        for node_run_id in checkpoint.ordered_source_node_run_ids
+        node_run_id not in node_run_ids for node_run_id in checkpoint.ordered_source_node_run_ids
     ):
         raise ValueError("TraversalCheckpoint source NodeRun must be persisted")
     if checkpoint.traversal_checkpoint_id in checkpoints_by_id:
