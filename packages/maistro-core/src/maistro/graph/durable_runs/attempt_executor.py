@@ -143,15 +143,6 @@ def _requires_hitl_redispatch(
     )
 
 
-def _can_reuse_completed_attempt(
-    record: DurableRunRecord,
-    node_id: str,
-    result: NodeResult,
-) -> bool:
-    """Reuse immutable physical evidence unless new HITL input requires redispatch."""
-    return not _requires_hitl_redispatch(record, node_id, result)
-
-
 async def _walk(
     record: DurableRunRecord,
     *,
