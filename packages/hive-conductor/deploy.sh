@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 # Deploy Hive Conductor to StudioShare Launch
 # Usage: ./deploy.sh [preview|production]
+#
+# This script deploys a BUILD, not a RELEASE. It pushes one immutable
+# git-SHA-tagged image so a specific commit can be run on preview/production.
+#
+# It no longer pushes `:latest`. ADR-073126-c4e1 §3 makes the tag-triggered
+# .github/workflows/release.yml the only path that publishes to the container
+# registry, and `:latest` is a release pointer: this script running on a laptop
+# could move it past a signed, approved release, so an unpinned `docker pull`
+# would silently get an unreviewed local build. Release tags (`vX.Y.Z`, `X.Y`,
+# `latest`) come from release.yml, gated by the `release` environment approval
+# and cosign-signed by digest.
 set -euo pipefail
 
 ENVIRONMENT="${1:-preview}"
@@ -22,7 +33,6 @@ docker build \
   -f packages/hive-conductor/Dockerfile \
   --build-arg VITE_POC_MODE=pm \
   -t "${FULL_IMAGE}" \
-  -t "${REGISTRY}/${IMAGE_NAME}:latest" \
   .
 
 echo "  ✓ Built ${FULL_IMAGE}"
@@ -31,8 +41,7 @@ echo "  ✓ Built ${FULL_IMAGE}"
 echo ""
 echo "▶ Step 2: Push to registry..."
 docker push "${FULL_IMAGE}"
-docker push "${REGISTRY}/${IMAGE_NAME}:latest"
-echo "  ✓ Pushed"
+echo "  ✓ Pushed ${FULL_IMAGE} (SHA tag only — release tags come from release.yml)"
 
 # Step 3: Verify on preview
 echo ""

@@ -190,5 +190,5 @@ task and failed propagates immediately (errors are never masked by fallback). Er
 
 ## References
 
-- [ADR-101: Foreign harness adapters](../adr/ADR-101-foreign-harness-adapters.md)
+- [ADR-101: Foreign harness adapters](../adr/ADR-101-foreign-harness-adapters-and-portability.md)
 - [SPEC-208: Foreign harness adapter](SPEC-208-foreign-harness-adapter.md)

@@ -14,15 +14,48 @@ set -euo pipefail
 #
 # This script installs/updates the maistro-engine source tree, then delegates to
 # ./install.sh so the same interactive feature/deployment flow is used everywhere.
+#
+# Version selection (E5/#298, ADR-073126-c4e1):
+#
+#   ./get.sh                          # latest RELEASE tag (default)
+#   ./get.sh --version v1.0.0         # exactly that release tag
+#   MAISTRO_VERSION=v1.0.0-rc1 ./get.sh
+#   ./get.sh --channel dev            # develop branch, for contributors
+#   ./get.sh --branch my/topic        # any branch, for development
+#
+# The default used to be "clone branch main", which made "install v1.0.0"
+# inexpressible and meant two people running the same command a week apart got
+# different code. The default is now a tag, which is immutable.
 
 REPO="${MAISTRO_REPO:-BlakeMatthews-dev/maistro-engine}"
-BRANCH="${MAISTRO_BRANCH:-main}"
+# No default: an empty MAISTRO_BRANCH means "resolve a release tag". Defaulting
+# it to `main` here would make an explicit branch request indistinguishable
+# from no request at all.
+BRANCH="${MAISTRO_BRANCH:-}"
+VERSION="${MAISTRO_VERSION:-}"
+CHANNEL="${MAISTRO_CHANNEL:-stable}"
+# 1 = refuse to install anything when no release tag can be resolved, instead
+# of falling back to a branch. For CI and for anyone who needs the install to
+# be reproducible or not at all.
+REQUIRE_RELEASE="${MAISTRO_REQUIRE_RELEASE:-0}"
+# Branch installed when the stable channel has no release to resolve. `main` and
+# not `develop` on purpose: ADR-073126-c4e1 §2 makes `main` the only branch a
+# final release tag may point at, so it is the closest thing to "the released
+# line" while no release exists.
+NO_RELEASE_FALLBACK_BRANCH="main"
 LEGACY_DIR="$HOME/.maistro"
 DEFAULT_INSTALL_DIR="$HOME/.maistro/maistro-engine"
 INSTALL_DIR="${MAISTRO_DIR:-$DEFAULT_INSTALL_DIR}"
 REPO_URL="https://github.com/${REPO}.git"
-ARCHIVE_URL="https://github.com/${REPO}/archive/refs/heads/${BRANCH}.tar.gz"
 ARCHIVE_MARKER=".maistro-archive-install"
+
+# Set by resolve_ref(): REF_KIND is `tag` or `branch`, REF is the tag/branch
+# name, ARCHIVE_URL is the matching codeload tarball, and IMAGE_TAG is the
+# container tag install.sh should pin the compose stack to.
+REF_KIND=""
+REF=""
+ARCHIVE_URL=""
+IMAGE_TAG=""
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -35,12 +68,125 @@ ok() { echo -e "${GREEN}[ok]${NC} $*"; }
 warn() { echo -e "${YELLOW}[warn]${NC} $*"; }
 fail() { echo -e "${RED}[error]${NC} $*" >&2; exit 1; }
 
+usage() {
+    cat <<'EOF'
+Usage: get.sh [options] [-- install.sh options]
+
+Version selection:
+  --version VERSION   Install exactly this release tag (e.g. v1.0.0, v1.0.0-rc1).
+                      A bare 1.0.0 is accepted and normalized to v1.0.0.
+  --channel stable    Latest published release tag. This is the default.
+  --channel dev       The 'develop' branch — for contributors, not for users.
+  --branch NAME       Any branch, for development. Overrides --channel.
+  --require-release   Fail instead of falling back to a branch when no release
+                      tag can be resolved.
+  -h, --help          Show this help.
+
+Everything after `--`, and any unrecognized option, is passed straight through
+to install.sh (e.g. --answers-file, --skip-wizard, --no-start).
+
+Environment:
+  MAISTRO_VERSION, MAISTRO_CHANNEL, MAISTRO_BRANCH, MAISTRO_REQUIRE_RELEASE,
+  MAISTRO_REPO, MAISTRO_DIR, MAISTRO_SHA256SUMS_URL,
+  MAISTRO_GITHUB_TOKEN (only used to raise the GitHub API rate limit).
+EOF
+}
+
+# Normalize a user-supplied version to the tag form the repo actually uses.
+# `1.0.0` and `v1.0.0` name the same release to a human; only one of them is a
+# real ref, so accept both and emit the real one.
+normalize_version() {
+    local v="$1"
+    [[ "$v" == v* ]] && printf '%s\n' "$v" || printf 'v%s\n' "$v"
+}
+
+# Latest published release tag via the GitHub API, or empty when there is none.
+#
+# /releases/latest deliberately excludes prereleases and drafts, which is the
+# behavior we want for a default install: an rc must be asked for by name, never
+# handed to someone who just ran the one-liner.
+latest_release_tag() {
+    command -v curl >/dev/null 2>&1 || return 0
+    local api="https://api.github.com/repos/${REPO}/releases/latest"
+    local -a auth=()
+    local token="${MAISTRO_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}"
+    [[ -n "$token" ]] && auth=(-H "Authorization: Bearer ${token}")
+    local body
+    # No -f: a 404 (no releases yet) is an expected answer here, not an error,
+    # and the caller distinguishes "no releases" from "could not ask".
+    body="$(curl -sSL --max-time 20 -H 'Accept: application/vnd.github+json' \
+        "${auth[@]}" "$api" 2>/dev/null)" || return 0
+    printf '%s' "$body" \
+        | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+        | head -1
+}
+
+# Decide what to install, once, before anything is downloaded. Explicit beats
+# implicit throughout: --version wins over --branch wins over --channel.
+resolve_ref() {
+    if [[ -n "$VERSION" ]]; then
+        REF_KIND="tag"
+        REF="$(normalize_version "$VERSION")"
+        info "Installing release ${REF} (requested explicitly)."
+    elif [[ -n "$BRANCH" ]]; then
+        REF_KIND="branch"
+        REF="$BRANCH"
+        warn "Installing branch '${REF}' — a branch moves. Use --version vX.Y.Z for a reproducible install."
+    elif [[ "$CHANNEL" == "dev" ]]; then
+        REF_KIND="branch"
+        REF="develop"
+        warn "Channel 'dev': installing the 'develop' branch. Unreleased code — expect breakage."
+    elif [[ "$CHANNEL" == "stable" ]]; then
+        REF="$(latest_release_tag)"
+        if [[ -n "$REF" ]]; then
+            REF_KIND="tag"
+            info "Installing latest release ${REF}."
+        else
+            # No releases published yet (today: the repo has zero tags), or the
+            # API was unreachable. Neither is a reason to install silently —
+            # say exactly what is about to happen and how to avoid it.
+            if [[ "$REQUIRE_RELEASE" == "1" || "$REQUIRE_RELEASE" == "true" ]]; then
+                fail "No published release found for ${REPO} and MAISTRO_REQUIRE_RELEASE=1 was set. Nothing installed."
+            fi
+            REF_KIND="branch"
+            REF="$NO_RELEASE_FALLBACK_BRANCH"
+            warn "No published release found for ${REPO} (the GitHub API returned none, or was unreachable)."
+            warn "Falling back to the '${REF}' branch, which is where release tags are cut from."
+            warn "This is NOT a pinned install: '${REF}' moves. To pin, re-run with --version vX.Y.Z"
+            warn "once a release exists, or with --require-release to fail instead of falling back."
+        fi
+    else
+        fail "Unknown channel '${CHANNEL}'. Use --channel stable or --channel dev."
+    fi
+
+    if [[ "$REF_KIND" == "tag" ]]; then
+        ARCHIVE_URL="https://github.com/${REPO}/archive/refs/tags/${REF}.tar.gz"
+        # A tagged install pins the container images to the matching tag, so
+        # the compose stack and the source tree are the same release.
+        IMAGE_TAG="$REF"
+    else
+        ARCHIVE_URL="https://github.com/${REPO}/archive/refs/heads/${REF}.tar.gz"
+        # No published image corresponds to an arbitrary branch commit, so a
+        # branch install uses the moving tag — and install.sh builds from
+        # source anyway unless image_pull is explicitly readied.
+        IMAGE_TAG="latest"
+    fi
+}
+
 download_with_git() {
     if [[ -d "$INSTALL_DIR/.git" ]]; then
         info "Updating existing maistro-engine checkout at $INSTALL_DIR..."
-        git -C "$INSTALL_DIR" fetch --depth 1 origin "$BRANCH"
-        git -C "$INSTALL_DIR" checkout -B "$BRANCH" "origin/$BRANCH"
-        ok "Updated source checkout."
+        if [[ "$REF_KIND" == "tag" ]]; then
+            # --force so re-running with the same tag after an upstream retag
+            # (which should never happen — tags are immutable per ADR §2 — but
+            # would otherwise wedge the checkout) still converges.
+            git -C "$INSTALL_DIR" fetch --depth 1 --force origin "refs/tags/${REF}:refs/tags/${REF}"
+            git -C "$INSTALL_DIR" checkout --force --detach "refs/tags/${REF}"
+        else
+            git -C "$INSTALL_DIR" fetch --depth 1 origin "$REF"
+            git -C "$INSTALL_DIR" checkout -B "$REF" "origin/$REF"
+        fi
+        ok "Updated source checkout to ${REF}."
         return
     fi
 
@@ -48,9 +194,11 @@ download_with_git() {
         fail "$INSTALL_DIR exists but is not a git checkout. Move it aside or set MAISTRO_DIR."
     fi
 
-    info "Cloning maistro-engine ${BRANCH} into $INSTALL_DIR..."
-    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
-    ok "Cloned source checkout."
+    info "Cloning maistro-engine ${REF} into $INSTALL_DIR..."
+    # `--branch` takes a tag name too, and with --depth 1 leaves HEAD detached
+    # at the tag — which is what a pinned install should look like.
+    git clone --depth 1 --branch "$REF" "$REPO_URL" "$INSTALL_DIR"
+    ok "Cloned source checkout at ${REF}."
 }
 
 download_with_archive() {
@@ -63,7 +211,7 @@ download_with_archive() {
     if [[ -e "$INSTALL_DIR/$ARCHIVE_MARKER" ]]; then
         info "Updating existing maistro-engine archive checkout at $INSTALL_DIR..."
     else
-        info "Downloading maistro-engine ${BRANCH} archive..."
+        info "Downloading maistro-engine ${REF} archive..."
     fi
 
     local tmp
@@ -170,6 +318,12 @@ run_installer() {
     cd "$INSTALL_DIR"
     chmod +x ./install.sh 2>/dev/null || true
 
+    # Pin the compose stack's images to the same release as the source tree.
+    # install.sh derives this itself from `git describe` when it is unset, but
+    # the archive path has no git metadata to derive it from, so pass it
+    # explicitly and let one decision cover both download paths.
+    export MAISTRO_IMAGE_TAG="${MAISTRO_IMAGE_TAG:-$IMAGE_TAG}"
+
     if [[ -t 0 ]]; then
         exec bash ./install.sh "$@"
     fi
@@ -181,17 +335,81 @@ run_installer() {
     exec bash ./install.sh "$@"
 }
 
+# Consume only get.sh's own options; everything else is install.sh's business
+# and is forwarded verbatim. Unrecognized options are forwarded rather than
+# rejected so install.sh stays free to grow flags without get.sh needing to
+# learn about each one.
+parse_args() {
+    PASSTHROUGH=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --version)
+                [[ $# -ge 2 ]] || fail "--version requires a value (e.g. --version v1.0.0)"
+                VERSION="$2"
+                shift 2
+                ;;
+            --version=*)
+                VERSION="${1#--version=}"
+                shift
+                ;;
+            --channel)
+                [[ $# -ge 2 ]] || fail "--channel requires a value (stable or dev)"
+                CHANNEL="$2"
+                shift 2
+                ;;
+            --channel=*)
+                CHANNEL="${1#--channel=}"
+                shift
+                ;;
+            --branch)
+                [[ $# -ge 2 ]] || fail "--branch requires a value"
+                BRANCH="$2"
+                shift 2
+                ;;
+            --branch=*)
+                BRANCH="${1#--branch=}"
+                shift
+                ;;
+            --require-release)
+                REQUIRE_RELEASE=1
+                shift
+                ;;
+            -h | --help)
+                usage
+                exit 0
+                ;;
+            --)
+                shift
+                PASSTHROUGH+=("$@")
+                break
+                ;;
+            *)
+                PASSTHROUGH+=("$1")
+                shift
+                ;;
+        esac
+    done
+}
+
 main() {
+    parse_args "$@"
+    resolve_ref
+
     echo ""
     echo "maistro-engine public installer"
-    echo "repo:   ${REPO}"
-    echo "branch: ${BRANCH}"
-    echo "dir:    ${INSTALL_DIR}"
+    printf 'repo:   %s\n' "${REPO}"
+    printf '%-8s%s\n' "${REF_KIND}:" "${REF}"
+    printf 'images: %s\n' "${IMAGE_TAG}"
+    printf 'dir:    %s\n' "${INSTALL_DIR}"
     echo ""
 
     bootstrap_source
     verify_installer_checksum
-    run_installer "$@"
+    if [[ ${#PASSTHROUGH[@]} -gt 0 ]]; then
+        run_installer "${PASSTHROUGH[@]}"
+    else
+        run_installer
+    fi
 }
 
 main "$@"

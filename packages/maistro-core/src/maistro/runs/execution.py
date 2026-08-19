@@ -2,9 +2,10 @@
 
 This service owns the domain-side ordering around one physical try: prepare the
 logical Run/NodeRun, create and persist the Attempt, mark it running, invoke
-Runtime using ``attempt_id`` as the physical execution identity, persist the
-terminal Attempt outcome, then perform policy-neutral logical reconciliation.
-Runtime never mutates Run/NodeRun state.
+Runtime using ``attempt_id`` as the physical execution identity, and persist the
+terminal physical outcome. Simple callers may retain default logical
+reconciliation; richer domains may defer acceptance and assign the logical
+NodeRun disposition themselves. Runtime never mutates Run/NodeRun state.
 """
 
 from __future__ import annotations
@@ -14,12 +15,23 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol, runtime_checkable
 
-from maistro.runs.model import Attempt, AttemptStatus
+from maistro.runs.model import AcceptedNodeOutcome, Attempt, AttemptStatus, NodeRun
 from maistro.runs.reconciliation import AttemptLifecycleReconciler, AttemptLifecycleStore
 from maistro.runs.store import RunIntegrityError
 from maistro.runtime import ExecutionCallable, ExecutionRuntime, RuntimeDeadlineExceeded
 
 AttemptReconciler = Callable[[Attempt], Awaitable[None]]
+AttemptContextFactory = Callable[[Attempt, Any], Any]
+
+
+def _materialize_execution_context(
+    attempt: Attempt,
+    execution_context: Any,
+    context_factory: AttemptContextFactory | None,
+) -> Any:
+    if context_factory is None:
+        return execution_context
+    return context_factory(attempt, execution_context)
 
 
 @runtime_checkable
@@ -34,6 +46,8 @@ class AttemptExecutionStore(AttemptLifecycleStore, Protocol):
         resume_checkpoint_id: str | None = None,
         lease_holder: str | None = None,
     ) -> Attempt: ...
+
+    async def list_attempts(self, node_run_id: str) -> list[Attempt]: ...
 
     async def transition_attempt(
         self,
@@ -75,15 +89,31 @@ class AttemptExecutionService:
         timeout_s: float | None = None,
         resume_checkpoint_id: str | None = None,
         reconcile_logical: bool = True,
+        context_factory: AttemptContextFactory | None = None,
+        prior_completion_accepted: bool = False,
     ) -> Attempt:
         """Create, run, terminalize, and optionally defer successful reconciliation.
 
         ``reconcile_logical=False`` allows Graph-like domains to interpret a
-        *successfully completed* physical result themselves. It never suppresses
-        reconciliation of cancellation, timeout, or failure: once physical work
-        is gone those exceptional terminal facts must be reflected in logical
-        persistence before the exception propagates.
+        successfully completed physical result themselves. It never suppresses
+        reconciliation of cancellation, timeout, or failure. A deferred
+        completion must be accepted before redispatch so recovery cannot repeat
+        an external side effect whose physical outcome is already durable.
+
+        ``context_factory`` runs only after the Attempt has been persisted and
+        marked running. It lets a domain attach canonical ``attempt_id`` and
+        related correlation data to its execution context without teaching the
+        generic Runtime about Graph or capability semantics.
+
+        ``prior_completion_accepted=True`` is a narrow continuation escape hatch
+        for domains that can prove the latest completed Attempt was previously
+        accepted and that new durable input now requires a fresh physical try.
         """
+        await self._reject_unaccepted_completion(
+            node_run_id,
+            prior_completion_accepted=prior_completion_accepted,
+        )
+
         deadline_at = None
         if timeout_s is not None:
             if timeout_s <= 0:
@@ -109,11 +139,16 @@ class AttemptExecutionService:
             AttemptStatus.RUNNING,
             fencing_token=token,
         )
+        runtime_context = _materialize_execution_context(
+            attempt,
+            execution_context,
+            context_factory,
+        )
 
         try:
             result = await self._runtime.execute(
                 work_item,
-                execution_context,
+                runtime_context,
                 execution_id=attempt.attempt_id,
                 executor=executor,
                 timeout_s=timeout_s,
@@ -156,6 +191,36 @@ class AttemptExecutionService:
             await self._reconcile(terminal)
         return terminal
 
+    async def accept_outcome(self, outcome: AcceptedNodeOutcome) -> NodeRun:
+        """Accept one persisted physical result with an explicit logical disposition."""
+        return await self._lifecycle.accept_outcome(outcome)
+
+    async def _reject_unaccepted_completion(
+        self,
+        node_run_id: str,
+        *,
+        prior_completion_accepted: bool = False,
+    ) -> None:
+        node_run = await self._store.get_node_run(node_run_id)
+        if node_run is None:
+            raise RunIntegrityError(f"NodeRun {node_run_id!r} does not exist")
+        if node_run.accepted_outcome is not None:
+            return
+        attempts = await self._store.list_attempts(node_run_id)
+        pending = next(
+            (
+                attempt
+                for attempt in reversed(attempts)
+                if attempt.status is AttemptStatus.COMPLETED
+            ),
+            None,
+        )
+        if pending is not None and not prior_completion_accepted:
+            raise RunIntegrityError(
+                "completed Attempt awaits domain acceptance; reconcile persisted evidence "
+                "before redispatch"
+            )
+
     async def cancel(self, attempt_id: str) -> bool:
         return await self._runtime.cancel(attempt_id)
 
@@ -182,4 +247,9 @@ class AttemptExecutionService:
             await self._after_reconcile(attempt.model_copy(deep=True))
 
 
-__all__ = ["AttemptExecutionService", "AttemptExecutionStore", "AttemptReconciler"]
+__all__ = [
+    "AttemptContextFactory",
+    "AttemptExecutionService",
+    "AttemptExecutionStore",
+    "AttemptReconciler",
+]

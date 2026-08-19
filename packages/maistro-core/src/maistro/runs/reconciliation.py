@@ -4,7 +4,7 @@ The reconciler owns universal lifecycle bookkeeping only. It never decides
 whether a failed/timed-out/cancelled Attempt is eligible for retry and it never
 decides Graph traversal completion. Physical completion is first captured as
 immutable AttemptResult evidence; only an explicit AcceptedNodeOutcome makes
-that result authoritative for the logical NodeRun.
+a projected result authoritative for the logical NodeRun.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from maistro.runs.model import (
     NodeRun,
     Run,
     RunStatus,
+    evidence_values_equal,
 )
 from maistro.runs.store import RunIntegrityError
 
@@ -60,6 +61,20 @@ class AttemptLifecycleStore(Protocol):
     async def get_attempt(self, attempt_id: str) -> Attempt | None: ...
 
 
+def _same_accepted_projection(
+    left: AcceptedNodeOutcome,
+    right: AcceptedNodeOutcome,
+) -> bool:
+    """Compare accepted logical facts while ignoring acceptance wall-clock time."""
+    return (
+        left.node_run_id == right.node_run_id
+        and left.attempt_result == right.attempt_result
+        and left.logical_status is right.logical_status
+        and evidence_values_equal(left.result, right.result)
+        and left.error == right.error
+    )
+
+
 class AttemptLifecycleReconciler:
     """Keep Run/NodeRun activity consistent with canonical physical Attempts."""
 
@@ -86,16 +101,34 @@ class AttemptLifecycleReconciler:
 
         node_run = await self._require_node_run(attempt.node_run_id)
         if attempt.status is AttemptStatus.COMPLETED:
-            result = AttemptResult.from_attempt(persisted)
+            physical = AttemptResult.from_attempt(persisted)
+            accepted = node_run.accepted_outcome
+            if accepted is not None:
+                if accepted.attempt_result == physical:
+                    return node_run
+                raise RunIntegrityError("NodeRun already accepted a different AttemptResult")
             outcome = AcceptedNodeOutcome(
                 node_run_id=node_run.node_run_id,
-                attempt_result=result,
+                attempt_result=physical,
+                logical_status=RunStatus.COMPLETED,
+                result=physical.result,
             )
             return await self._accept_node_outcome(node_run, outcome)
 
         parked = await self._park_node_run(node_run, attempt)
         await self._park_run_if_inactive(parked.run_id)
         return parked
+
+    async def accept_outcome(self, outcome: AcceptedNodeOutcome) -> NodeRun:
+        """Persist an explicit domain interpretation of completed physical evidence."""
+        node_run = await self._require_node_run(outcome.node_run_id)
+        persisted = await self._store.get_attempt(outcome.attempt_result.attempt_id)
+        if persisted is None:
+            raise RunIntegrityError("accepted outcome references an Attempt that is not persisted")
+        physical = AttemptResult.from_attempt(persisted)
+        if physical != outcome.attempt_result:
+            raise RunIntegrityError("accepted outcome differs from persisted Attempt evidence")
+        return await self._accept_node_outcome(node_run, outcome)
 
     async def _ensure_run_running(self, run: Run) -> Run:
         if run.status in TERMINAL_RUN_STATUSES:
@@ -134,28 +167,26 @@ class AttemptLifecycleReconciler:
         node_run: NodeRun,
         outcome: AcceptedNodeOutcome,
     ) -> NodeRun:
+        accepted = node_run.accepted_outcome
+        if accepted is not None:
+            if _same_accepted_projection(accepted, outcome):
+                return node_run
+            raise RunIntegrityError("NodeRun already has a different accepted outcome")
         if node_run.status is RunStatus.COMPLETED:
-            accepted = node_run.accepted_outcome
-            if accepted is None:
-                # Pre-upgrade completed rows projected the physical result but
-                # did not persist AcceptedNodeOutcome. The lifecycle/store
-                # permit exactly this evidence-only backfill after validating
-                # the referenced Attempt against canonical storage.
-                return await self._store.transition_node_run(
-                    node_run.node_run_id,
-                    RunStatus.COMPLETED,
-                    result=node_run.result,
-                    accepted_outcome=outcome,
-                )
-            if accepted.attempt_result != outcome.attempt_result:
-                raise RunIntegrityError("NodeRun already has a different accepted outcome")
-            return node_run
+            return await self._store.transition_node_run(
+                node_run.node_run_id,
+                RunStatus.COMPLETED,
+                result=node_run.result,
+                error=node_run.error,
+                accepted_outcome=outcome,
+            )
         if node_run.status is not RunStatus.RUNNING:
             raise RunIntegrityError("completed Attempt requires a running logical NodeRun")
         return await self._store.transition_node_run(
             node_run.node_run_id,
-            RunStatus.COMPLETED,
-            result=outcome.attempt_result.result,
+            outcome.logical_status,
+            result=outcome.result,
+            error=outcome.error,
             accepted_outcome=outcome,
         )
 
