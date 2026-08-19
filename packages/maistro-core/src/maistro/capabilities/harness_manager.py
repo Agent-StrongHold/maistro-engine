@@ -169,6 +169,10 @@ class HarnessSessionManager:
         if not isinstance(result, dict):
             raise TypeError("harness Invocation result must be a response mapping")
         if not executed and result.get("actions"):
+            # A completed Invocation can be reused for the same logical effect.
+            # Its provider call and ActionGate already ran, so returning the
+            # stored action list would make downstream consumers execute those
+            # actions again without charging/rechecking the current gate.
             result = {**result, "actions": []}
         return result
 
