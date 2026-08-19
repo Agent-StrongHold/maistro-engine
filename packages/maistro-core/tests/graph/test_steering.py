@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import pytest
+
 from maistro.graph.steering import SteeringQueue
 
 
 class TestSteer:
+    @pytest.mark.ac("ADR-066/AC-16")
     def test_adds_guidance(self):
         q = SteeringQueue()
         q.steer("Focus on database schema")
@@ -11,6 +14,7 @@ class TestSteer:
         entries = q.get_all()
         assert entries == ["Focus on database schema"]
 
+    @pytest.mark.ac("ADR-066/AC-18")
     def test_multiple_steer_calls(self):
         q = SteeringQueue()
         q.steer("Use Python 3.12 features")
@@ -26,6 +30,7 @@ class TestSteer:
 
 
 class TestDrain:
+    @pytest.mark.ac("ADR-066/AC-18")
     def test_drain_returns_and_clears(self):
         q = SteeringQueue()
         q.steer("Guidance A")

@@ -18,6 +18,7 @@ class _HttpError(Exception):
 
 
 class TestStagePolicies:
+    @pytest.mark.ac("ADR-066/AC-31")
     def test_read_policy(self):
         p = get_policy(OperationStage.READ)
         assert p.max_attempts == 3
@@ -25,6 +26,7 @@ class TestStagePolicies:
         assert p.max_delay == 2.0
         assert p.retryable is True
 
+    @pytest.mark.ac("ADR-066/AC-32")
     def test_evaluate_policy(self):
         p = get_policy(OperationStage.EVALUATE)
         assert p.max_attempts == 2
@@ -32,6 +34,7 @@ class TestStagePolicies:
         assert p.max_delay == 8.0
         assert p.retryable is True
 
+    @pytest.mark.ac("ADR-066/AC-33")
     def test_write_policy(self):
         p = get_policy(OperationStage.WRITE)
         assert p.max_attempts == 1
@@ -50,6 +53,7 @@ class TestShouldRetry:
         err = _HttpError("Server error", 500)
         assert should_retry(OperationStage.READ, 0, err) is True
 
+    @pytest.mark.ac("ADR-066/AC-31")
     def test_read_exhausted_attempts(self):
         err = _HttpError("Server error", 500)
         assert should_retry(OperationStage.READ, 0, err) is True
@@ -57,16 +61,19 @@ class TestShouldRetry:
         assert should_retry(OperationStage.READ, 2, err) is True
         assert should_retry(OperationStage.READ, 3, err) is False
 
+    @pytest.mark.ac("ADR-066/AC-32")
     def test_evaluate_transient_retryable(self):
         err = _HttpError("Server error", 500)
         assert should_retry(OperationStage.EVALUATE, 0, err) is True
         assert should_retry(OperationStage.EVALUATE, 1, err) is True
         assert should_retry(OperationStage.EVALUATE, 2, err) is False
 
+    @pytest.mark.ac("ADR-066/AC-33")
     def test_write_never_retries(self):
         err = _HttpError("Server error", 500)
         assert should_retry(OperationStage.WRITE, 0, err) is False
 
+    @pytest.mark.ac("ADR-066/AC-35")
     def test_non_transient_not_retried(self):
         err = _HttpError("Unauthorized", 401)
         assert should_retry(OperationStage.READ, 0, err) is False
@@ -81,11 +88,13 @@ class TestShouldRetry:
 
 
 class TestGetDelay:
+    @pytest.mark.ac("ADR-066/AC-31")
     def test_read_fixed_delay(self):
         assert get_delay(OperationStage.READ, 0) == 0.25
         assert get_delay(OperationStage.READ, 1) == 0.25
         assert get_delay(OperationStage.READ, 2) == 0.25
 
+    @pytest.mark.ac("ADR-066/AC-32")
     def test_evaluate_exponential_delay(self):
         assert get_delay(OperationStage.EVALUATE, 0) == 1.0
         assert get_delay(OperationStage.EVALUATE, 1) == 2.0
@@ -95,6 +104,7 @@ class TestGetDelay:
     def test_evaluate_capped_at_max(self):
         assert get_delay(OperationStage.EVALUATE, 4) == 8.0
 
+    @pytest.mark.ac("ADR-066/AC-33")
     def test_write_zero_delay(self):
         assert get_delay(OperationStage.WRITE, 0) == 0.0
         assert get_delay(OperationStage.WRITE, 1) == 0.0

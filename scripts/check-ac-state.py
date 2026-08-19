@@ -467,14 +467,21 @@ def collect_adrs(
         # them as `unmeasured` while their own acceptance criteria sit right
         # there in the document.
         own, own_untagged, own_errors = gherkin_criteria(text)
-        own_rungs = [
+        # The ADR's own ac-modules map, same as a spec's. Without it every
+        # ADR-owned criterion has module=None and silently caps at `passing` —
+        # the ladder would tell an ADR its work can never be proven reachable,
+        # which is false and would teach people to ignore the tier.
+        own_modules = _ac_modules(fm)
+        own_criteria = [
             Criterion(
                 ac_id=f"{adr_id}/{short}",
+                module=own_modules.get(short),
                 covered_by=markers.get(f"{adr_id}/{short}", []),
                 passing=None if passing is None else f"{adr_id}/{short}" in passing,
-            ).rung(unreachable)
+            )
             for short in own
         ]
+        own_rungs = [c.rung(unreachable) for c in own_criteria]
 
         inputs = tiers + own_rungs
         adrs.append(
@@ -485,6 +492,15 @@ def collect_adrs(
                 "specs": [s["id"] for s in children],
                 "measurable_specs": len(tiers),
                 "own_criteria": len(own),
+                "own_detail": [
+                    {
+                        "id": c.ac_id,
+                        "module": c.module,
+                        "covered_by": c.covered_by,
+                        "rung": c.rung(unreachable),
+                    }
+                    for c in own_criteria
+                ],
                 "scenarios_without_ac_tag": own_untagged,
                 "gherkin_parse_errors": own_errors,
                 "tier": tier_of(inputs) if inputs else "unmeasured",
@@ -511,7 +527,12 @@ def main(argv: list[str]) -> int:
     specs = collect_specs(markers, unreachable, passing)
     adrs = collect_adrs(specs, markers, unreachable, passing)
 
+    # Criteria live in specs AND in the ADRs that carry their own scenarios;
+    # counting only spec ids here would report every ADR-bound marker as
+    # naming no criterion — an orphan list poisoned by exactly the bindings
+    # the ADR pass adds.
     declared_ids = {c["id"] for s in specs for c in s["criteria"]}
+    declared_ids |= {c["id"] for a in adrs for c in a["own_detail"]}
     orphans = sorted(set(markers) - declared_ids)
     # A ticked box on a criterion the ladder cannot get to `reachable` is a
     # claim the artefacts do not support. With --run-tests off, everything sits

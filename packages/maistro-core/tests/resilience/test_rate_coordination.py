@@ -9,6 +9,7 @@ from maistro.resilience.rate_coordination import RateLimitCoordinator
 
 
 class TestInMemoryMode:
+    @pytest.mark.ac("ADR-066/AC-23")
     def test_not_limited_initially(self):
         coord = RateLimitCoordinator()
         assert coord.is_rate_limited("openai") is False
@@ -50,6 +51,7 @@ class TestInMemoryMode:
         assert coord.is_rate_limited("openai") is False
         assert coord.is_rate_limited("anthropic") is False
 
+    @pytest.mark.ac("ADR-066/AC-29")
     def test_independent_providers(self):
         coord = RateLimitCoordinator()
         coord.record_rate_limit("openai", time.time() + 60)
@@ -73,6 +75,7 @@ class TestFileMode:
         coord.record_rate_limit("openai", reset_at)
         assert coord.is_rate_limited("openai") is True
 
+    @pytest.mark.ac("ADR-066/AC-23")
     def test_not_limited_initially(self, tmp_path):
         state_file = str(tmp_path / "rates.json")
         coord = RateLimitCoordinator(state_file=state_file)
@@ -100,6 +103,7 @@ class TestFileMode:
         assert coord.is_rate_limited("openai") is False
         assert coord.is_rate_limited("anthropic") is False
 
+    @pytest.mark.ac("ADR-066/AC-29")
     def test_independent_providers(self, tmp_path):
         state_file = str(tmp_path / "rates.json")
         coord = RateLimitCoordinator(state_file=state_file)
@@ -116,6 +120,7 @@ class TestFileMode:
         assert coord.is_rate_limited("openai") is False
         assert coord.is_rate_limited("anthropic") is True
 
+    @pytest.mark.ac("ADR-066/AC-24")
     def test_state_persists_across_instances(self, tmp_path):
         state_file = str(tmp_path / "rates.json")
         reset_at = time.time() + 60

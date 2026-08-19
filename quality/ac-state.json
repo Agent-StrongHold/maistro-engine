@@ -13,13 +13,13 @@
     "specs_with_ac_heading": 166,
     "specs_with_ac_ids": 15,
     "specs_awaiting_retrofit": 152,
-    "criteria_declared": 146,
+    "criteria_declared": 191,
     "criteria_annotated": 55,
-    "markers_found": 86,
+    "markers_found": 102,
     "markers_without_criterion": 2,
     "criteria_claimed_but_unproven": 0,
     "gherkin_criteria": 63,
-    "scenarios_without_ac_tag": 185,
+    "scenarios_without_ac_tag": 140,
     "gherkin_parse_errors": 0,
     "completion_claims_contradicted": 6,
     "completion_claims_unverifiable": 71
@@ -6082,6 +6082,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6093,6 +6094,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6104,6 +6106,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6115,6 +6118,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6126,6 +6130,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6139,6 +6144,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6150,6 +6156,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6161,6 +6168,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6174,6 +6182,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6185,6 +6194,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6198,6 +6208,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6211,6 +6222,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6224,6 +6236,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6237,6 +6250,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6250,6 +6264,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6263,6 +6278,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6276,6 +6292,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6289,6 +6306,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6300,6 +6318,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6311,6 +6330,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6324,6 +6344,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6337,6 +6358,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6350,6 +6372,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6363,6 +6386,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6376,6 +6400,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6389,6 +6414,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6402,6 +6428,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6415,6 +6442,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6428,6 +6456,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6441,6 +6470,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6452,6 +6482,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6463,6 +6494,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6474,6 +6506,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6485,6 +6518,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6496,6 +6530,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6507,6 +6542,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6520,6 +6556,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6533,6 +6570,7 @@
       ],
       "measurable_specs": 1,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "declared"
@@ -6544,6 +6582,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6555,6 +6594,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6568,6 +6608,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6581,6 +6622,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6592,6 +6634,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6605,6 +6648,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6616,6 +6660,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6629,6 +6674,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6642,6 +6688,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6655,6 +6702,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6668,6 +6716,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6681,6 +6730,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6694,6 +6744,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6707,6 +6758,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6720,6 +6772,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6731,6 +6784,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6742,6 +6796,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6755,6 +6810,7 @@
       ],
       "measurable_specs": 1,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "declared"
@@ -6768,6 +6824,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6782,6 +6839,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6795,6 +6853,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6808,6 +6867,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6821,6 +6881,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6834,6 +6895,7 @@
       ],
       "measurable_specs": 1,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [
         "TrustTier.min() is monotonically decreasing",
         "skull is always the lowest tier",
@@ -6855,6 +6917,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6866,6 +6929,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6877,6 +6941,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6888,6 +6953,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6901,6 +6967,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6914,6 +6981,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [
         "Single-file output is a file artifact",
         "Multi-file landing page (HTML+CSS+JS)",
@@ -6935,6 +7003,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [
         "fill_first selects highest-priority available key",
         "fill_first falls to next priority when top key is in cooldown",
@@ -6979,6 +7048,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -6993,6 +7063,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [
         "OpenAI API key is redacted",
         "GitHub personal access token is redacted",
@@ -7051,6 +7122,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [
         "Factory returns a TestEnvironment with all components",
         "Factory-created container has all in-memory stores",
@@ -7090,56 +7162,314 @@
         "SPEC-070226-af02"
       ],
       "measurable_specs": 0,
-      "own_criteria": 0,
-      "scenarios_without_ac_tag": [
-        "Root role assigned at depth 0",
-        "Orchestrator role assigned at intermediate depth",
-        "Leaf role assigned at max depth",
-        "Subgraph invocation at depth exceeding max raises DepthExceededError",
-        "Depth role computed for max_depth of 1",
-        "Orchestrator at depth 2 can spawn children within its subtree",
-        "Leaf node attempting subgraph invocation is blocked",
-        "Depth descriptor is frozen and immutable",
-        "No compaction when blackboard is under threshold",
-        "Compaction triggered when blackboard exceeds 80% of context window",
-        "Iterative compaction uses previous summary",
-        "Critical context is preserved through compaction",
-        "Compaction result is injected into next node's context",
-        "Original entries retained for audit after compaction",
-        "Compaction handles empty blackboard gracefully",
-        "Steering appends guidance to the queue",
-        "Guidance appears in next node's context after current node completes",
-        "Multiple steering calls accumulate and drain atomically",
-        "Steering does not interrupt in-flight node",
-        "Leaf role ignores steering",
-        "Orchestrator can steer within its subtree only",
-        "Steering on a completed graph is a no-op",
-        "No wait when no rate limit is active",
-        "Process waits when another process recorded a rate limit",
-        "Recording a rate limit from a 429 response",
-        "Stale entries are pruned on read",
-        "Concurrent reads do not block each other",
-        "Write uses atomic file replacement",
-        "Different providers tracked independently",
-        "Staleness threshold prunes very old entries",
-        "Read stage retries up to 3 times with 250ms fixed delay",
-        "Evaluate stage retries up to 2 times with exponential backoff",
-        "Write stage does not retry by default",
-        "Write stage retries with explicit idempotency key",
-        "Non-transient errors are never retried regardless of stage",
-        "Custom policies override defaults per stage",
-        "LLM call stage uses exponential backoff matching ADR-038",
-        "Probing returns cached limit without making API calls",
-        "Probing succeeds at all tiers and returns maximum tier",
-        "Probing parses actual limit from overflow error",
-        "Probing uses binary search when error parsing fails",
-        "Probing stops at first failure and does not attempt higher tiers",
-        "Probed limit feeds into compaction threshold calculation",
-        "Concurrent probes for the same model use cached result",
-        "Probe prompt is approximately the target token count"
+      "own_criteria": 45,
+      "own_detail": [
+        {
+          "id": "ADR-066/AC-1",
+          "module": "maistro.graph.depth",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-2",
+          "module": "maistro.graph.depth",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-3",
+          "module": "maistro.graph.depth",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-4",
+          "module": "maistro.graph.depth",
+          "covered_by": [
+            "packages/maistro-core/tests/graph/test_depth.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-066/AC-5",
+          "module": "maistro.graph.depth",
+          "covered_by": [
+            "packages/maistro-core/tests/graph/test_depth.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-066/AC-6",
+          "module": "maistro.graph.depth",
+          "covered_by": [
+            "packages/maistro-core/tests/graph/test_depth.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-066/AC-7",
+          "module": "maistro.graph.depth",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-8",
+          "module": "maistro.graph.depth",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-9",
+          "module": "maistro.graph.compaction",
+          "covered_by": [
+            "packages/maistro-core/tests/graph/test_compaction.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-066/AC-10",
+          "module": "maistro.graph.compaction",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-11",
+          "module": "maistro.graph.compaction",
+          "covered_by": [
+            "packages/maistro-core/tests/graph/test_compaction.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-066/AC-12",
+          "module": "maistro.graph.compaction",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-13",
+          "module": "maistro.graph.compaction",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-14",
+          "module": "maistro.graph.compaction",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-15",
+          "module": "maistro.graph.compaction",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-16",
+          "module": "maistro.graph.steering",
+          "covered_by": [
+            "packages/maistro-core/tests/graph/test_steering.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-066/AC-17",
+          "module": "maistro.graph.steering",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-18",
+          "module": "maistro.graph.steering",
+          "covered_by": [
+            "packages/maistro-core/tests/graph/test_steering.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-066/AC-19",
+          "module": "maistro.graph.steering",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-20",
+          "module": "maistro.graph.steering",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-21",
+          "module": "maistro.graph.steering",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-22",
+          "module": "maistro.graph.steering",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-23",
+          "module": "maistro.resilience.rate_coordination",
+          "covered_by": [
+            "packages/maistro-core/tests/resilience/test_rate_coordination.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-066/AC-24",
+          "module": "maistro.resilience.rate_coordination",
+          "covered_by": [
+            "packages/maistro-core/tests/resilience/test_rate_coordination.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-066/AC-25",
+          "module": "maistro.resilience.rate_coordination",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-26",
+          "module": "maistro.resilience.rate_coordination",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-27",
+          "module": "maistro.resilience.rate_coordination",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-28",
+          "module": "maistro.resilience.rate_coordination",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-29",
+          "module": "maistro.resilience.rate_coordination",
+          "covered_by": [
+            "packages/maistro-core/tests/resilience/test_rate_coordination.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-066/AC-30",
+          "module": "maistro.resilience.rate_coordination",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-31",
+          "module": "maistro.resilience.retry_policy",
+          "covered_by": [
+            "packages/maistro-core/tests/resilience/test_retry_policy.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-066/AC-32",
+          "module": "maistro.resilience.retry_policy",
+          "covered_by": [
+            "packages/maistro-core/tests/resilience/test_retry_policy.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-066/AC-33",
+          "module": "maistro.resilience.retry_policy",
+          "covered_by": [
+            "packages/maistro-core/tests/resilience/test_retry_policy.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-066/AC-34",
+          "module": "maistro.resilience.retry_policy",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-35",
+          "module": "maistro.resilience.retry_policy",
+          "covered_by": [
+            "packages/maistro-core/tests/resilience/test_retry_policy.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-066/AC-36",
+          "module": "maistro.resilience.retry_policy",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-37",
+          "module": "maistro.resilience.retry_policy",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-38",
+          "module": "maistro.resilience.context_probe",
+          "covered_by": [
+            "packages/maistro-core/tests/resilience/test_context_probe.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-066/AC-39",
+          "module": "maistro.resilience.context_probe",
+          "covered_by": [
+            "packages/maistro-core/tests/resilience/test_context_probe.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-066/AC-40",
+          "module": "maistro.resilience.context_probe",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-41",
+          "module": "maistro.resilience.context_probe",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-42",
+          "module": "maistro.resilience.context_probe",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-43",
+          "module": "maistro.resilience.context_probe",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-44",
+          "module": "maistro.resilience.context_probe",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-066/AC-45",
+          "module": "maistro.resilience.context_probe",
+          "covered_by": [],
+          "rung": "declared"
+        }
       ],
+      "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "declared"
     },
     {
       "id": "ADR-067",
@@ -7150,6 +7480,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7166,6 +7497,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7179,6 +7511,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7192,6 +7525,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7203,6 +7537,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7214,6 +7549,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7225,6 +7561,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7236,6 +7573,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7249,6 +7587,7 @@
       ],
       "measurable_specs": 1,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "declared"
@@ -7260,6 +7599,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7271,6 +7611,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7284,6 +7625,7 @@
       ],
       "measurable_specs": 1,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "declared"
@@ -7295,6 +7637,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7310,6 +7653,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7323,6 +7667,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7334,6 +7679,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7345,6 +7691,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7356,6 +7703,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7367,6 +7715,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7380,6 +7729,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7391,6 +7741,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7402,6 +7753,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7413,6 +7765,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7426,6 +7779,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7439,6 +7793,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7457,6 +7812,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7470,6 +7826,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7483,6 +7840,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7496,6 +7854,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7509,6 +7868,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7522,6 +7882,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7535,6 +7896,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7548,6 +7910,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7561,6 +7924,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7574,6 +7938,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7587,6 +7952,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7600,6 +7966,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7613,6 +7980,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7624,6 +7992,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7635,6 +8004,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7648,6 +8018,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7661,6 +8032,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7672,6 +8044,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7685,6 +8058,7 @@
       ],
       "measurable_specs": 1,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "declared"
@@ -7698,6 +8072,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7709,6 +8084,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7722,6 +8098,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7735,6 +8112,7 @@
       ],
       "measurable_specs": 1,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "passing"
@@ -7748,6 +8126,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7759,6 +8138,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7772,6 +8152,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7783,6 +8164,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7796,6 +8178,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7809,6 +8192,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7822,6 +8206,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7835,6 +8220,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7848,6 +8234,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7861,6 +8248,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [
         "load_bundled registers all Tier-1 slugs at T1",
         "\"default\" is resolvable by DesignOrchestrateNode",
@@ -7881,6 +8269,7 @@
       ],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7892,6 +8281,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"
@@ -7903,6 +8293,7 @@
       "specs": [],
       "measurable_specs": 0,
       "own_criteria": 0,
+      "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
       "tier": "unmeasured"

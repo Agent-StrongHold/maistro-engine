@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from maistro.graph.compaction import CompactionConfig, ContextCompactor
 from maistro.graph.types import GraphBlackboard
 
@@ -19,6 +21,7 @@ def _large_blackboard() -> GraphBlackboard:
 
 
 class TestShouldCompact:
+    @pytest.mark.ac("ADR-066/AC-9")
     def test_under_threshold(self):
         config = CompactionConfig(threshold_tokens=10000)
         compactor = ContextCompactor(config)
@@ -74,6 +77,7 @@ class TestLlmCompact:
         result = compactor.compact(bb, llm_call=mock_llm)
         assert result.metadata["_compaction_summary"] == "LLM summary of context"
 
+    @pytest.mark.ac("ADR-066/AC-11")
     def test_stores_previous_summary(self):
         compactor = ContextCompactor(CompactionConfig(threshold_tokens=100))
         bb = _make_blackboard(node_annotations={"k": "v" * 1000})
@@ -103,6 +107,7 @@ class TestBuildCompactionPrompt:
         assert "Test objective" in prompt
         assert "Progress So Far" not in prompt
 
+    @pytest.mark.ac("ADR-066/AC-11")
     def test_with_previous_summary(self):
         compactor = ContextCompactor()
         bb = _make_blackboard()
