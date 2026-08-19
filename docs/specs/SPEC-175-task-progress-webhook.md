@@ -157,7 +157,7 @@ Invalid synthetic JSON must fail `ConductorProgressPayload.model_validate` with 
 | `uv run mypy` (touched modules) | clean |
 | `uvx bandit -r packages/maistro-core/src/maistro/tasks/progress_webhook.py` | no findings |
 | `uvx vulture … --min-confidence 80` | no findings |
-| pylint | not wired in this workspace (ruff-first per `docs/quality-standards.md`); run ad hoc if needed |
+| pylint | not wired in this workspace (ruff-first per `docs/quality-gates.md`); run ad hoc if needed |
 
 **Note:** Running `pytest` across `maistro-core` and `maistro-server` test trees in one invocation can hit `ImportPathMismatchError` on duplicate `tests.conftest` module names; run per package tree in CI (existing pattern).
 

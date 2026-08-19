@@ -113,12 +113,12 @@ Engine-internal architectural decisions. Numbering is sequential (`ADR-NNN`) and
 
 ### Specs
 
-No `specs/` tree exists in this repo (and won't — specs live in product repos per ADR-019/030). Closest analogues remain:
+No top-level `specs/` tree exists in this repo (and won't — product specs live in product repos per ADR-019/030). Engine design specs do live here, under `docs/specs/`. Other related documents:
 
 - `docs/archive/CONSOLIDATION-PLAN.md` (historical — see archived banner)
 - `docs/anthropic-agent-framework.md`
-- `docs/claude-quality-enforcement.md`
-- `docs/quality-standards.md`
+- `docs/quality-gates.md` (supersedes the June-2026 `quality-standards.md` and
+  `claude-quality-enforcement.md` audits, whose findings have all been fixed)
 - `docs/audit/AUDIT-2026-02-20.md`, `docs/audit/TESTING-AUDIT-2026-02-20.md` (historical — see `docs/audit/HN-LAUNCH-AUDIT.md` for current state)
 - `docs/analysis/` (cross-framework comparisons)
 - `docs/specs/SPEC-176-hive-conductor-package.md` — Hive Conductor monorepo package (`packages/hive-conductor/`)
