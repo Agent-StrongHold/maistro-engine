@@ -25,7 +25,9 @@ from maistro.capabilities.governed_invocation import (
 from maistro.capabilities.invocation import InMemoryInvocationStore, InvocationExecutionService
 from maistro.capabilities.slots.approval import ApprovalRequest
 from maistro.events.envelope import InMemoryEventStore
-from maistro.policy.types import Decision, PolicyVerdict
+from maistro.policy.engine import SequencePolicyEngine
+from maistro.policy.rules import AfterCountRule
+from maistro.policy.types import Action, Decision, PolicyVerdict
 
 
 @dataclass(frozen=True)
@@ -53,8 +55,10 @@ async def _resolver(_binding: Binding) -> _Provider:
 async def _approval_policy(
     _binding: Binding,
     _request: Any,
-    _context: InvocationPolicyContext,
+    context: InvocationPolicyContext,
 ) -> PolicyVerdict:
+    if context.approved:
+        return PolicyVerdict(Decision.ALLOW, reason="human approval applied", rule="human-review")
     return PolicyVerdict(
         Decision.REQUIRE_APPROVAL,
         reason="human approval required",
@@ -155,6 +159,73 @@ async def test_approved_effect_resumes_on_later_attempt_without_second_request()
     assert same.status is ApprovalStatus.APPROVED
     stream = await events.list_stream("workspace:ws-1")
     assert "capability.invocation.approval_satisfied" in [event.type for event in stream]
+
+
+@pytest.mark.asyncio
+async def test_approved_effect_is_committed_to_stateful_policy_before_execution() -> None:
+    approvals = InMemoryApprovalStore()
+    events = InMemoryEventStore()
+    engine = SequencePolicyEngine([AfterCountRule("external_write", threshold=0)])
+
+    async def policy(
+        _binding: Binding,
+        _request: Any,
+        context: InvocationPolicyContext,
+    ) -> PolicyVerdict:
+        return engine.charge(
+            "run-1",
+            Action(kind="external_write", cost=2.5),
+            approved=context.approved,
+        )
+
+    service = GovernedInvocationExecutionService(
+        invocation_service=InvocationExecutionService(store=InMemoryInvocationStore()),
+        event_store=events,
+        policy_evaluator=policy,
+        approval_store=approvals,
+    )
+
+    with pytest.raises(InvocationApprovalPending) as pending:
+        await service.invoke(
+            binding=_binding(),
+            run_id="run-1",
+            node_run_id="node-run-1",
+            attempt_id="attempt-1",
+            effect_key="write:stateful-policy",
+            request={"value": 1},
+            resolver=_resolver,
+            executor=_must_not_execute,
+        )
+    assert engine.snapshot("run-1").count == 0
+
+    await approvals.resolve(pending.value.request_id, approved=True, actor="alice")
+
+    async def execute(_provider: _Provider, request: Any) -> dict[str, Any]:
+        return {"committed": request}
+
+    await service.invoke(
+        binding=_binding(),
+        run_id="run-1",
+        node_run_id="node-run-1",
+        attempt_id="attempt-2",
+        effect_key="write:stateful-policy",
+        request={"value": 1},
+        resolver=_resolver,
+        executor=execute,
+    )
+
+    snapshot = engine.snapshot("run-1")
+    assert snapshot.count == 1
+    assert snapshot.cost == 2.5
+    stream = await events.list_stream("workspace:ws-1")
+    approved_decisions = [
+        event
+        for event in stream
+        if event.type == "capability.invocation.policy_decision"
+        and event.payload.get("approved") is True
+    ]
+    assert len(approved_decisions) == 1
+    assert approved_decisions[0].payload["decision"] == "allow"
 
 
 @pytest.mark.asyncio
