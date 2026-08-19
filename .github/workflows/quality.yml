@@ -115,6 +115,15 @@ jobs:
       - name: version consistency check (VERSION vs. every version site)
         run: uv run python scripts/bump_version.py --check
 
+      # The maistro-registry gate validates front-matter relationships
+      # (supersedes/depends_on); it never resolves prose links in a document
+      # body. Renaming an ADR therefore leaves dead [ADR-xxx](...) links behind
+      # in every spec that cited the old filename, invisibly. This is a strict
+      # 0-baseline, not a ratchet: a broken relative link is never acceptable
+      # and fixing one is always a one-line change.
+      - name: doc links (every relative markdown link resolves)
+        run: uv run python scripts/check-doc-links.py
+
       # Unlike the ratchets below, this one is a *count-free* ratchet: the
       # baseline names every tolerated gap, and a gap that gets fixed but left
       # in the file fails the build too. That asymmetry is the point — a count
