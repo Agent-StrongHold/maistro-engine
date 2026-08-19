@@ -16,7 +16,7 @@ set -euo pipefail
 
 ENVIRONMENT="${1:-preview}"
 IMAGE_NAME="hive-conductor"
-REGISTRY="${DOCKER_REGISTRY:-ghcr.io/blakematthews-dev}"
+REGISTRY="${DOCKER_REGISTRY:-ghcr.io/agent-stronghold}"
 TAG="$(git rev-parse --short HEAD)"
 FULL_IMAGE="${REGISTRY}/${IMAGE_NAME}:${TAG}"
 

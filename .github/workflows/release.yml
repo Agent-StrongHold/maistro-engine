@@ -39,7 +39,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAMESPACE: ghcr.io/blakematthews-dev
+  IMAGE_NAMESPACE: ghcr.io/agent-stronghold
   # Pinned tool versions + checksums, matching how security.yml installs grype
   # and syft: a pinned release tarball verified by hash, not `curl | sh` off a
   # mutable branch. syft's pin is the same one security.yml already uses.
@@ -282,7 +282,7 @@ jobs:
   # nothing, which is worse than a red one.
   #
   # Required PyPI-side config, per package, for all five names:
-  #   owner: BlakeMatthews-dev   repository: maistro-engine
+  #   owner: Agent-StrongHold   repository: maistro-engine
   #   workflow: release.yml      environment: release
   # ---------------------------------------------------------------------------
   pypi:
@@ -342,7 +342,7 @@ jobs:
     timeout-minutes: 60
     environment:
       name: release
-      url: https://github.com/BlakeMatthews-dev/maistro-engine/pkgs/container/maistro-engine
+      url: https://github.com/Agent-StrongHold/maistro-engine/pkgs/container/maistro-engine
     permissions:
       contents: read
       packages: write
@@ -571,7 +571,7 @@ jobs:
 #  1. PyPI + TestPyPI trusted publishers for all five publish-set names
 #     (maistro-core, maistro-canvas, maistro-evolve, maistro-rsi,
 #     maistro-bootstrap), each configured with
-#     owner BlakeMatthews-dev / repo maistro-engine / workflow release.yml /
+#     owner Agent-StrongHold / repo maistro-engine / workflow release.yml /
 #     environment `release`. Until then the `pypi` job fails at upload.
 #  2. A GitHub environment named `release` with a required reviewer
 #     (ADR §4). Without it the `pypi` and `images` jobs run UNGATED — they

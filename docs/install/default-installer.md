@@ -31,7 +31,7 @@ install should do.
 
 Image tags follow the source tree: a tagged install exports
 `MAISTRO_IMAGE_TAG=vX.Y.Z`, so the `image_pull` compose the wizard generates
-pins `ghcr.io/blakematthews-dev/{maistro-engine,hive-conductor}:vX.Y.Z` rather
+pins `ghcr.io/agent-stronghold/{maistro-engine,hive-conductor}:vX.Y.Z` rather
 than `:latest`. A branch install uses `latest`, and `install.sh` run directly
 out of a tree derives the tag from `git describe --tags --exact-match`.
 

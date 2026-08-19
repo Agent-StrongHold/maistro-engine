@@ -62,15 +62,15 @@ def test_image_tag_follows_the_installed_release(monkeypatch: pytest.MonkeyPatch
     """
     monkeypatch.setenv("MAISTRO_IMAGE_TAG", "v1.0.0")
     services = render_image_pull_compose(BASE_COMPOSE)["services"]
-    assert services["maistro-engine"]["image"] == "ghcr.io/blakematthews-dev/maistro-engine:v1.0.0"
-    assert services["hive-conductor"]["image"] == "ghcr.io/blakematthews-dev/hive-conductor:v1.0.0"
+    assert services["maistro-engine"]["image"] == "ghcr.io/agent-stronghold/maistro-engine:v1.0.0"
+    assert services["hive-conductor"]["image"] == "ghcr.io/agent-stronghold/hive-conductor:v1.0.0"
 
 
 def test_blank_image_tag_falls_back_to_latest(monkeypatch: pytest.MonkeyPatch) -> None:
     """An empty or whitespace value is 'unset', not a tag named ''."""
     monkeypatch.setenv("MAISTRO_IMAGE_TAG", "   ")
     services = render_image_pull_compose(BASE_COMPOSE)["services"]
-    assert services["maistro-engine"]["image"] == "ghcr.io/blakematthews-dev/maistro-engine:latest"
+    assert services["maistro-engine"]["image"] == "ghcr.io/agent-stronghold/maistro-engine:latest"
 
 
 def test_unpinned_built_service_is_an_error() -> None:
