@@ -5,6 +5,12 @@ from __future__ import annotations
 from maistro.capabilities.binding import Binding, ResolvedBinding
 from maistro.capabilities.bootstrap import default_capability_registry
 from maistro.capabilities.discovery import discover_into
+from maistro.capabilities.governed_invocation import (
+    GovernedInvocationExecutionService,
+    InvocationApprovalRequired,
+    InvocationDenied,
+    InvocationPolicyContext,
+)
 from maistro.capabilities.harness_manager import HarnessSessionManager
 from maistro.capabilities.http import AsyncHttp
 from maistro.capabilities.http_client import HttpxAsyncHttp
@@ -61,6 +67,7 @@ __all__ = [
     "CapabilityUnavailable",
     "EffectNotApplied",
     "FallbackPolicy",
+    "GovernedInvocationExecutionService",
     "GuardedHarnessRunner",
     "HarnessInputBlocked",
     "HarnessRunner",
@@ -68,7 +75,10 @@ __all__ = [
     "HttpxAsyncHttp",
     "InMemoryInvocationStore",
     "Invocation",
+    "InvocationApprovalRequired",
+    "InvocationDenied",
     "InvocationExecutionService",
+    "InvocationPolicyContext",
     "InvocationStatus",
     "OpencodeHarnessRunner",
     "ProviderHealth",
