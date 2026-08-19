@@ -8,7 +8,7 @@
 
 ## Architecture
 
-Consolidation **monorepo** (single git repo, `uv` workspace) with 7 packages + the hive-conductor app. It is *not* just a library: it **contains** the Agent Conductor app (`hive-conductor`, the personal/homelab product) and the canvas ability (`maistro-canvas`), and exposes `maistro-core` for downstream products to import. (Was historically split across sibling repos — see `docs/archive/CONSOLIDATION-PLAN.md`.)
+Consolidation **monorepo** (single git repo, `uv` workspace) with 9 Python packages + the hive-conductor app. It is *not* just a library: it **contains** the Agent Conductor app (`hive-conductor`, the personal/homelab product) and the canvas ability (`maistro-canvas`), and exposes `maistro-core` for downstream products to import. (Was historically split across sibling repos — see `docs/archive/CONSOLIDATION-PLAN.md`.)
 
 ```
 packages/
@@ -76,7 +76,7 @@ Every subsystem is importable. Consumers add `maistro-core` to their requirement
 | **Ontology** | `maistro.ontology` | Semantic object layer and registry (ADR-036) |
 | **Resilience** | `maistro.resilience` | Reliability taxonomy and circuit-breaking (ADR-038) |
 | **Identity** | `maistro.identity` | Identity management |
-| **Scheduling** | `maistro.scheduling` | Scheduling (distinct from the scheduler/ placeholder) |
+| **Scheduling** | `maistro.scheduling` | Scheduling |
 | **Prompts** | `maistro.prompts` | Prompt templates |
 | **Capabilities** | `maistro.capabilities` | Slots, providers, registry, and discovery; SPEC-184/188 self-repair remains proposed |
 | **Credentials** | `maistro.credentials` | Per-user encrypted credentials for PM integrations |
@@ -219,7 +219,6 @@ maistro-engine/
 │   │       ├── protocols/       # abstract interfaces
 │   │       ├── quota/           # billing, tracker
 │   │       ├── router/          # scorer, selector, filter, scarcity, speed
-│   │       ├── scheduler/       # placeholder
 │   │       ├── security/        # warden, sentinel, gate, auth
 │   │       ├── sessions/        # conversation history
 │   │       ├── skills/          # marketplace, forge, parser, canary, connectors
@@ -230,7 +229,7 @@ maistro-engine/
 │   │       ├── ontology/        # Semantic object layer, registry (ADR-036)
 │   │       ├── resilience/      # Reliability taxonomy, circuit-breaking (ADR-038)
 │   │       ├── identity/        # Identity management
-│   │       ├── scheduling/      # Scheduling (separate from scheduler/ placeholder)
+│   │       ├── scheduling/      # Scheduling
 │   │       └── prompts/         # Prompt templates
 │   │
 │   ├── maistro-canvas/
@@ -277,6 +276,5 @@ maistro-engine/
 ├── formal/                      # Property-based conformance tests (Hypothesis); separate CI flow
 ├── docs/adr/                    # Architecture Decision Records
 ├── docs/specs/                  # Engine design specifications
-├── specs/                       # Topical spec notes (channels, conductor, infra, intelligence, security, tools)
 └── pyproject.toml               # uv workspace root (uv.lock is source of truth)
 ```
