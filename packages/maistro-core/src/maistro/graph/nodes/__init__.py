@@ -5,6 +5,8 @@ Public surface:
   - :func:`get_node(kind)` — fetch a node class by its `kind` identifier
   - :func:`list_kinds()` — enumerate all registered kinds
   - :func:`catalog_json()` — serialize the catalog for the frontend palette
+  - :func:`invoke_capability_effect()` — map governed capability approval into
+    the canonical Graph pause/resume contract
   - :class:`Node`, :class:`BaseNode`, :class:`NodeContext`, :class:`NodeResult`
     (re-exported from :mod:`.base`)
 
@@ -26,6 +28,7 @@ from .base import (
     now_utc,
     pause_until,
 )
+from .capability_effect import invoke_capability_effect
 
 _REGISTRY: dict[str, type[BaseNode[Any, Any]]] = {}
 
@@ -168,6 +171,7 @@ __all__ = [
     "NodeResult",
     "catalog_json",
     "get_node",
+    "invoke_capability_effect",
     "list_kinds",
     "now_utc",
     "pause_until",
