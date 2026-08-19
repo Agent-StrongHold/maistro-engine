@@ -204,7 +204,22 @@ jobs:
           # (`lease_epoch` and `holder`) that are intentionally retained for
           # recovery/fencing provenance and are exercised through persistence
           # and tests even though vulture sees no direct production read yet.
-          VULTURE_BASELINE: 1425
+          #
+          # 1429 (2026-08-19) canonical Binding + durable Invocation (#430):
+          # net +4, measured on the merged tree. Six new findings, all the
+          # already-baselined false-positive class — three Pydantic
+          # `@model_validator` methods vulture cannot see called
+          # (`_validate_binding`, `_validate_resolved`, `_validate_invocation`),
+          # two Pydantic model fields (`provider_trust_tier`, `resolved_at`),
+          # and the public `Invocation.invoke` dispatched through a protocol.
+          #
+          # The offset from +6 to +4 is NOT two fixes. `invocation.py` declares
+          # a local named `running`, and vulture matches unused names across the
+          # whole corpus, so that one identifier silently marks the pre-existing
+          # `decay_driver.running` and `types/reactor.running` findings as used.
+          # Recorded here so a later reader does not read the count as progress;
+          # it is the count-ratchet blind spot #446 exists to close.
+          VULTURE_BASELINE: 1429
         run: |
           # `third_party/` is vendored upstream source (Google's IFEval verifier,
           # BFCL's AST checker), kept byte-faithful so the benchmarks run the
