@@ -13,13 +13,13 @@
     "specs_with_ac_heading": 166,
     "specs_with_ac_ids": 15,
     "specs_awaiting_retrofit": 152,
-    "criteria_declared": 191,
+    "criteria_declared": 235,
     "criteria_annotated": 55,
-    "markers_found": 102,
+    "markers_found": 136,
     "markers_without_criterion": 2,
     "criteria_claimed_but_unproven": 0,
     "gherkin_criteria": 63,
-    "scenarios_without_ac_tag": 140,
+    "scenarios_without_ac_tag": 96,
     "gherkin_parse_errors": 0,
     "completion_claims_contradicted": 6,
     "completion_claims_unverifiable": 71
@@ -7062,56 +7062,344 @@
         "SPEC-223"
       ],
       "measurable_specs": 0,
-      "own_criteria": 0,
-      "own_detail": [],
-      "scenarios_without_ac_tag": [
-        "OpenAI API key is redacted",
-        "GitHub personal access token is redacted",
-        "Google API key is redacted",
-        "Slack bot token is redacted",
-        "Perplexity API key is redacted",
-        "Anthropic API key is redacted",
-        "Stripe live key is redacted",
-        "AWS access key ID is redacted",
-        "ENV variable with sensitive name is redacted",
-        "ENV assignment for API key is redacted",
-        "ENV variable with non-sensitive name is preserved",
-        "JSON password field value is redacted",
-        "JSON api_key field value is redacted",
-        "JSON non-sensitive field is preserved",
-        "Bearer token in Authorization header is redacted",
-        "Basic auth in Authorization header is redacted",
-        "RSA private key block is redacted",
-        "OpenSSH private key block is redacted",
-        "PostgreSQL connection string with password is redacted",
-        "MySQL connection string with password is redacted",
-        "MongoDB connection string with password is redacted",
-        "JWT token is redacted",
-        "JWT in Authorization header is redacted by auth header pattern",
-        "URL with username and password is redacted",
-        "URL with only username is redacted",
-        "URL with api_key query parameter is redacted",
-        "URL with token query parameter is redacted",
-        "URL with non-sensitive query parameter is preserved",
-        "Multi-line text with secrets on different lines is fully redacted",
-        "Private key block spanning multiple lines is fully redacted",
-        "API key inside JSON value is redacted without partial leakage",
-        "URL with credentials inside JSON field is redacted",
-        "URL with api_key query param containing an API key prefix is redacted",
-        "JWT inside an Authorization header is fully consumed",
-        "Redaction of a 1KB log line completes within 1ms",
-        "Redaction does not exhibit catastrophic backtracking on adversarial input",
-        "Plain text with no secrets is returned unchanged",
-        "Code snippet without secrets is returned unchanged",
-        "URLs without credentials or sensitive params are preserved",
-        "Empty string returns empty string",
-        "None input returns empty string",
-        "Telegram bot token is redacted",
-        "Sentry DSN is redacted",
-        "Multiple different secret types in one string are all redacted"
+      "own_criteria": 44,
+      "own_detail": [
+        {
+          "id": "ADR-064/AC-1",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-2",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-3",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-4",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-5",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-6",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-7",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-8",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-9",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-10",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-11",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-12",
+          "module": "maistro.security.redact",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-064/AC-13",
+          "module": "maistro.security.redact",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-064/AC-14",
+          "module": "maistro.security.redact",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-064/AC-15",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-16",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-17",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-18",
+          "module": "maistro.security.redact",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-064/AC-19",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-20",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-21",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-22",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-23",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-24",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-25",
+          "module": "maistro.security.redact",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-064/AC-26",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-27",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-28",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-29",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-30",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-31",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-32",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-33",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-34",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-35",
+          "module": "maistro.security.redact",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-064/AC-36",
+          "module": "maistro.security.redact",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-064/AC-37",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-38",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-39",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-40",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-064/AC-41",
+          "module": "maistro.security.redact",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-064/AC-42",
+          "module": "maistro.security.redact",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-064/AC-43",
+          "module": "maistro.security.redact",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-064/AC-44",
+          "module": "maistro.security.redact",
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
+        }
       ],
+      "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "declared"
     },
     {
       "id": "ADR-065",
