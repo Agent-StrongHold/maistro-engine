@@ -30,7 +30,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-REPO_URL = "https://github.com/BlakeMatthews-dev/maistro-engine"
+REPO_URL = "https://github.com/Agent-StrongHold/maistro-engine"
 
 # Fallback only. The maintained wording lives in CHANGELOG.md's
 # "### API compatibility" block (E4); this exists so a release cut before that
@@ -141,9 +141,9 @@ sha256sum --check --ignore-missing SHA256SUMS
 ```bash
 cosign verify \\
   --certificate-identity-regexp \\
-    '^https://github.com/BlakeMatthews-dev/maistro-engine/\\.github/workflows/release\\.yml@refs/tags/{re.escape(tag)}$' \\
+    '^https://github.com/Agent-StrongHold/maistro-engine/\\.github/workflows/release\\.yml@refs/tags/{re.escape(tag)}$' \\
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \\
-  ghcr.io/blakematthews-dev/maistro-engine:{tag}
+  ghcr.io/agent-stronghold/maistro-engine:{tag}
 ```
 
 **Provenance.** The tag is annotated and, per

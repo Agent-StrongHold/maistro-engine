@@ -177,7 +177,7 @@ five are in.
 - `materialize_install_artifacts` grows two delivery renderers:
   - `image_pull`: writes a **standalone** `compose.install.yml` (a complete
     compose file, not an override) whose services carry only pinned `image:`
-    references (`ghcr.io/blakematthews-dev/…@sha256:…`, digests injected at
+    references (`ghcr.io/agent-stronghold/…@sha256:…`, digests injected at
     release time) and no `build:` keys at all. An override merged onto the
     root compose cannot express this — Compose merges mappings, so the base
     `build:` keys would survive and `up --build` would still build source.

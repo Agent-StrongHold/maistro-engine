@@ -16,7 +16,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-DEFAULT_IMAGE_REPOSITORY = "ghcr.io/blakematthews-dev"
+DEFAULT_IMAGE_REPOSITORY = "ghcr.io/agent-stronghold"
 DEFAULT_IMAGE_TAG = "latest"
 
 IMAGE_SERVICES = ("maistro-engine", "hive-conductor")

@@ -147,7 +147,7 @@ def _generated_artifacts(answers: InstallAnswersV1) -> dict[str, Any]:
                 # `docker compose config` when merged with the root compose file;
                 # the real reactor image is published by the release workflow
                 # (SPEC-072726-3439 Phase 5).
-                "image": "ghcr.io/blakematthews-dev/maistro-engine:reactor-preview",
+                "image": "ghcr.io/agent-stronghold/maistro-engine:reactor-preview",
                 "profiles": ["reactor"],
                 "environment": {
                     "MAISTRO_DELIVERY_MODE": answers.delivery_mode,
