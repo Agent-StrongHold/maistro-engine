@@ -96,6 +96,27 @@ def test_state_round_trips_blackboard_and_decisions() -> None:
     assert restored == state
 
 
+def test_state_can_seed_transition_from_frozen_checkpoint_data() -> None:
+    checkpointed = GraphExecutionState(
+        run_id="run-1",
+        blackboard_snapshot={"review": {"history": ["draft", "approved"]}},
+        metadata={
+            "hitl_answers": {
+                "review": {"answer": "approved", "tags": ["human", "approved"]}
+            }
+        },
+    )
+
+    transitioned = GraphExecutionState(
+        run_id=checkpointed.run_id,
+        blackboard_snapshot=checkpointed.blackboard_snapshot,
+        metadata=checkpointed.metadata,
+    )
+
+    assert transitioned.blackboard_snapshot == checkpointed.blackboard_snapshot
+    assert transitioned.metadata == checkpointed.metadata
+
+
 def test_state_rejects_non_json_checkpoint_values() -> None:
     with pytest.raises(ValidationError, match="must contain only JSON values"):
         GraphExecutionState(
