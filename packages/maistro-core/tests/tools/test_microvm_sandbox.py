@@ -77,6 +77,51 @@ def test_config_from_settings_parses_memory_and_network():
     assert config.network == "restricted"
 
 
+async def test_env_is_sanitized_before_launch():
+    """Ambient/request-derived secrets must not cross the VM boundary."""
+    launcher = _FakeLauncher()
+    sandbox = MicroVMSandbox(
+        launcher,
+        workspace="/tmp/maistro-workspace/t1",
+        env={"PATH": "/usr/bin", "AWS_SECRET_ACCESS_KEY": "leak", "OPENAI_API_KEY": "leak"},
+    )
+    await sandbox.exec("echo hi")
+    passed = launcher.specs[-1].env
+    assert "PATH" in passed  # allowlisted
+    assert "AWS_SECRET_ACCESS_KEY" not in passed
+    assert "OPENAI_API_KEY" not in passed
+
+
+async def test_trusted_env_bypasses_the_allowlist_but_env_does_not():
+    """The two channels differ in trust, and only `trusted_env` is verbatim.
+
+    A harness provider must be able to provision its own credential into the
+    guest (opencode's provider key), while request-derived or ambient values
+    stay allowlist-filtered. Collapsing these into one dict forces a choice
+    between leaking secrets and breaking the harness.
+    """
+    launcher = _FakeLauncher()
+    sandbox = MicroVMSandbox(
+        launcher,
+        workspace="/tmp/maistro-workspace/t1",
+        env={"AWS_SECRET_ACCESS_KEY": "leak"},
+        trusted_env={"OPENCODE_API_KEY": "wired-by-operator"},
+    )
+    await sandbox.exec("echo hi")
+    passed = launcher.specs[-1].env
+    assert passed["OPENCODE_API_KEY"] == "wired-by-operator"
+    assert "AWS_SECRET_ACCESS_KEY" not in passed
+
+
+def test_from_settings_uses_vm_rootfs_not_docker_image():
+    """Firecracker cannot boot an OCI ref: rootfs/kernel are VM-specific settings."""
+    settings = SandboxSettings(image="python:3.12-slim")
+    config = MicroVMConfig.from_settings(settings)
+    assert config.rootfs_image == "rootfs.ext4"
+    assert config.kernel_image == "vmlinux"
+    assert config.rootfs_image != settings.image
+
+
 def test_parse_mib_units():
     assert _parse_mib("512m") == 512
     assert _parse_mib("2g") == 2048
