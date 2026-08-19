@@ -69,11 +69,17 @@ jobs:
       - name: install age + age-keygen
         run: |
           set -e
-          sudo apt-get update || true
-          sudo apt-get install -y age || true
+          # Bounded: an unbounded apt-get or curl here hangs the whole job with
+          # no output. Observed 2026-08-19 — quality.yml sat 29 minutes on this
+          # step (past its own timeout-minutes) with every later step pending,
+          # because the fetch from dl.filippo.io never returned and nothing
+          # bounded it. `|| true` tolerates a *failed* apt, not a wedged one.
+          timeout 180 sudo apt-get update || true
+          timeout 180 sudo apt-get install -y age || true
           if ! command -v age-keygen &> /dev/null; then
             mkdir -p /tmp/age && cd /tmp/age
-            curl -fsSL https://dl.filippo.io/age/latest/age-linux-amd64.tar.gz | tar xz
+            curl -fsSL --max-time 120 --retry 3 --retry-delay 5 --retry-all-errors \
+              https://dl.filippo.io/age/latest/age-linux-amd64.tar.gz | tar xz
             sudo mv /tmp/age/age /tmp/age/age-keygen /usr/local/bin/
             age-keygen --help > /dev/null && echo "✓ age-keygen ready"
           fi
