@@ -84,11 +84,14 @@ Workspace creation was deliberately moved out of the scope-gated parametrized
 Hive cases and into the ordinary product-surface check, so Hive loses one
 collected node ID while retaining the intended assertion. Durable approval
 coverage now includes stateful policy charging of human-approved effects before
-provider dispatch. Other suite counts are unchanged.
+provider dispatch. The Graph capability-effect adapter adds one maistro-core
+node ID, covering the pause-then-resume path: the first Attempt pauses with
+durable approval provenance and the second executes the approved effect without
+a duplicate approval or Invocation. Other suite counts are unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 6237 | `ci.yml` |
+| `packages/maistro-core/tests` | 6238 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
