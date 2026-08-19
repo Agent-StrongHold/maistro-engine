@@ -20,6 +20,13 @@ from maistro.graph.node_types import (
     build_default_node_type_registry,
 )
 from maistro.graph.optimizer import GraphOptimizer
+from maistro.graph.traversal_commit import (
+    TraversalCheckpoint,
+    TraversalCommit,
+    accepted_outcome_id,
+    edge_decision_id,
+    graph_state_hash,
+)
 from maistro.graph.types import (
     AgentRole,
     CodeOutput,
@@ -84,6 +91,11 @@ __all__ = [
     "SubTask",
     "TemplateProvenance",
     "ToolEvaluation",
+    "TraversalCheckpoint",
+    "TraversalCommit",
+    "accepted_outcome_id",
     "build_default_node_type_registry",
+    "edge_decision_id",
+    "graph_state_hash",
     "run_graph",
 ]

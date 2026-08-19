@@ -52,6 +52,21 @@ Durable graph canonical-persistence convergence in #416 replaces legacy
 DurableRun/DurableNode lifecycle tests with canonical Run/NodeRun coverage,
 for a net reduction of six maistro-core node IDs while retaining the
 durability, routing, HITL, restart, mutation, and persistence invariants.
+Real durable Graph frontier execution adds six maistro-core node IDs covering
+concurrent fan-out, deterministic NodeRun ordering, source-correlated routing,
+and fan-in input merging.
+Durable Attempt/Runtime-boundary convergence adds nine maistro-core node IDs
+covering Attempt ownership, shared durable persistence, deferred domain
+reconciliation, real frontier execution through Attempt execution IDs,
+cancellation terminalization across Attempt, NodeRun, and Run, and recovery by
+appending a second Attempt under the same logical NodeRun.
+Accepted AttemptResult/NodeRun outcome separation adds nine maistro-core node
+IDs. Durable execution-lease fencing adds five more maistro-core node IDs.
+Authoritative TraversalCommit/TraversalCheckpoint contracts add eleven
+maistro-core node IDs.
+PR #447 adds six maistro-core node IDs covering checkpoint-bridged traversal
+history, reuse of frozen execution state across transitions, and rejection of
+execution continuation after an accepted logical completion.
 Stream 1 adds 99 maistro-core node IDs for the canonical Project,
 Run/NodeRun/Attempt, runtime, persistence, and execution-service contracts.
 Stream 6 adds five provider-parity node IDs.
@@ -68,24 +83,30 @@ aggregation, and single-tool-fingerprint sweep validation.
 Mutation ratchet coverage adds seven root-suite node IDs for the global floor,
 source-specific non-regression, monotonic baseline improvement, survivor
 identity reporting, runtime regression confidence, and incomplete telemetry
-rejection.
+rejection. Two more come from splitting the superseded unbaselined-source case
+into the floor-fails, floor-passes, and candidate-merge assertions it had been
+conflating.
 Workspace creation was deliberately moved out of the scope-gated parametrized
 Hive cases and into the ordinary product-surface check, so Hive loses one
-collected node ID while retaining the intended assertion. Other suite counts are
-unchanged.
+collected node ID while retaining the intended assertion. Durable approval
+coverage now includes stateful policy charging of human-approved effects before
+provider dispatch. The Graph capability-effect adapter adds one maistro-core
+node ID, covering the pause-then-resume path: the first Attempt pauses with
+durable approval provenance and the second executes the approved effect without
+a duplicate approval or Invocation. Other suite counts are unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 6133 | `ci.yml` |
+| `packages/maistro-core/tests` | 6238 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
 | `packages/maistro-turing/tests` | 176 | `ci.yml` |
 | `packages/maistro-design/tests` | 156 | `ci.yml` |
-| `packages/maistro-bootstrap/tests` | 123 | `ci.yml` |
+| `packages/maistro-bootstrap/tests` | 124 | `ci.yml` |
 | `packages/maistro-canvas/tests` | 124 | `ci.yml` |
 | `packages/maistro-turing/backend/tests` | 26 | `ci.yml` (own invocation) |
-| `tests/` (root) | 648 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
+| `tests/` (root) | 672 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
 | `formal/` | 417 | `formal-conformance.yml` + `quality.yml` Pillar 2 |
 | `packages/hive-conductor/backend/tests` | 1233 | `ci.yml` (bare python) |
 | `packages/hive-conductor/tests/e2e` | 24 | `ci.yml` `hive-conductor-e2e` (docker-compose) |

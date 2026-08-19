@@ -181,6 +181,6 @@ code calls `litellm` directly, so the grep rule can be added to ci.yml at wiring
 ## References
 
 - [ADR-055: Observability extensions](../adr/ADR-055-observability-replay-and-pii-tiers.md)
-- [ADR-037: Observability](../adr/ADR-037-observability.md)
+- [ADR-037: Observability](../adr/ADR-037-observability-taxonomy.md)
 - [SPEC-223: Secret redaction](SPEC-223-secret-redaction.md)
 - [SPEC-228: Observability baseline gaps](SPEC-228-observability-baseline-gaps.md)

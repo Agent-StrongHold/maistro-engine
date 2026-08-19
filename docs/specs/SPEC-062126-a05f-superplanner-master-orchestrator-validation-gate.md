@@ -155,6 +155,6 @@ cycle and budget checks are pure/sync internally — no `await` needed unless `s
   detection precedent)
 - `packages/maistro-core/src/maistro/graph/dag_validator.py` (`ValidationReport` shape precedent —
   not imported, different domain)
-- [ADR-071: General Task Planner & Orchestration](../adr/ADR-071-general-task-planner.md)
+- [ADR-071: General Task Planner & Orchestration](../adr/ADR-071-task-planner-orchestration.md)
 - [ADR-068: Unified Authorization & Elevation](../adr/ADR-068-unified-authorization-and-elevation.md)
 - [SPEC-258: The Repertoire Pattern](SPEC-258-repertoire-pattern-core.md)

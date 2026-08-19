@@ -84,8 +84,14 @@ class ForbiddenPairRule:
     def evaluate(self, action: Action, prospective: SequenceState) -> PolicyVerdict | None:
         if action.kind != self.after:
             return None
-        prior = list(prospective.history)[:-1]  # exclude the action itself
-        if any(a.kind == self.before for a in prior):
+        # Use the durable, unbounded counts_by_kind rather than the bounded
+        # `history` deque: a `before` action that scrolled out of the recent
+        # window (e.g. 256 unrelated actions after a credential_read) must still
+        # gate — otherwise the ordering rule is bypassable by padding history.
+        prior_before = prospective.counts_by_kind.get(self.before, 0)
+        if self.before == self.after:
+            prior_before -= 1  # the action under evaluation already incremented its own kind
+        if prior_before > 0:
             return PolicyVerdict(self.decision, f"{self.after} follows {self.before}", self.name)
         return None
 

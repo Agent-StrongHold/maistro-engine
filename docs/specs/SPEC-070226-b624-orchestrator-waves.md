@@ -314,7 +314,7 @@ running code.
 
 ## References
 
-- [ADR-071: General Task Planner & Orchestration](../adr/ADR-071-general-task-planner-orchestration.md)
+- [ADR-071: General Task Planner & Orchestration](../adr/ADR-071-task-planner-orchestration.md)
 - [ADR-070: Repertoire Pattern](../adr/ADR-070-repertoire-pattern.md)
 - [ADR-062: Graph Execution Protocol](../adr/ADR-062-graph-execution-protocol.md)
 - [ADR-056: Task crash recovery](../adr/ADR-056-task-crash-recovery.md)

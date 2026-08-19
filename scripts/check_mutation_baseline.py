@@ -16,8 +16,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import mutation_ratchet
-
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BASELINE = ROOT / "quality" / "mutation-baseline.json"
 FLOOR = 0.90
@@ -90,6 +88,12 @@ def _scheduler_telemetry_for(rows_path: Path) -> Path | None:
 
 
 def _publish_ratchet_into_health_report(rows_path: Path, report: dict[str, Any]) -> None:
+    # Imported here, not at module scope: this file sits in scripts/ and imports
+    # a sibling, which only resolves when Python puts scripts/ on sys.path — true
+    # for `python scripts/check_mutation_baseline.py`, false for a test that
+    # loads this file by path. A lazy import keeps both working.
+    import mutation_ratchet
+
     json_path = rows_path.with_name("mutation-health-report.json")
     markdown_path = rows_path.with_name("mutation-health-report.md")
     if json_path.is_file():
@@ -108,6 +112,8 @@ def _publish_ratchet_into_health_report(rows_path: Path, report: dict[str, Any])
 
 
 def _write_scheduler_candidate(rows_path: Path, baseline_path: Path) -> int:
+    import mutation_ratchet
+
     telemetry_path = _scheduler_telemetry_for(rows_path)
     if telemetry_path is None:
         raise ValueError("scheduler telemetry not found beside aggregate mutation rows")

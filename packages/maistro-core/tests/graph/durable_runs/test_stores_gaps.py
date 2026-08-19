@@ -8,7 +8,8 @@ from maistro.graph.durable_runs.stores import (
     InMemoryDurableRunStore,
     SqliteDurableRunStore,
 )
-from maistro.runs.model import RunStatus
+from maistro.runs.lifecycle import transition_node_run
+from maistro.runs.model import NodeRun, RunStatus
 
 from .._canonical_helpers import durable_record
 
@@ -20,12 +21,20 @@ def _record_for(run_id: str, **overrides: object):  # type: ignore[no-untyped-de
     if overrides:
         raise AssertionError(f"unsupported test overrides: {sorted(overrides)}")
     nodes = [{"id": active_node_id, "kind": "test.noop"}] if active_node_id else [{"id": "n1"}]
+    node_runs = ()
+    if status is RunStatus.PAUSED and active_node_id:
+        node_run = NodeRun(run_id=run_id, node_id=str(active_node_id), ordinal=1)
+        node_run = transition_node_run(node_run, RunStatus.QUEUED)
+        node_run = transition_node_run(node_run, RunStatus.RUNNING)
+        node_run = transition_node_run(node_run, RunStatus.PAUSED)
+        node_runs = (node_run,)
     return durable_record(
         {"id": "d1", "nodes": nodes, "edges": []},
         run_id=run_id,
         status=status,
         active_node_id=active_node_id,
         project_id=str(project_id),
+        node_runs=node_runs,
     )
 
 
@@ -75,7 +84,7 @@ async def test_submit_hitl_answer_wrong_status_raises_valueerror() -> None:
 async def test_submit_hitl_answer_wrong_node_raises_valueerror() -> None:
     store = InMemoryDurableRunStore()
     await store.create(_record_for("r1", status=RunStatus.PAUSED, active_node_id="ask"))
-    with pytest.raises(ValueError, match="waiting on node"):
+    with pytest.raises(ValueError, match="waiting on frontier"):
         await store.submit_hitl_answer("r1", "wrong-node", {"answer": "x"})
 
 
@@ -139,7 +148,7 @@ async def test_sqlite_submit_hitl_answer_wrong_status_raises_valueerror(tmp_path
 async def test_sqlite_submit_hitl_answer_wrong_node_raises_valueerror(tmp_path) -> None:
     store = SqliteDurableRunStore(tmp_path / "durable.db")
     await store.create(_record_for("r1", status=RunStatus.PAUSED, active_node_id="ask"))
-    with pytest.raises(ValueError, match="waiting on node"):
+    with pytest.raises(ValueError, match="waiting on frontier"):
         await store.submit_hitl_answer("r1", "wrong-node", {"answer": "x"})
 
 

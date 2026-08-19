@@ -2,6 +2,39 @@
 
 `maistro-install` now models the curl-first default installer as a safe, functional plan rather than an opaque shell script. The intended remote entrypoint is a small fetcher that performs preflight checks, verifies the pinned installer payload, and hands off to the shared `InstallAnswersV1` resolver.
 
+## Version selection (E5/#298)
+
+`get.sh` and `get.ps1` install a **release tag**, not a branch. This is what
+makes "install v1.0.0" expressible; it is also what makes two people running
+the same command a week apart get the same code.
+
+| Intent | POSIX | PowerShell |
+|---|---|---|
+| Latest release (default) | `./get.sh` | `.\get.ps1` |
+| A specific release | `./get.sh --version v1.0.0` | `.\get.ps1 -Version v1.0.0` |
+| A release candidate | `MAISTRO_VERSION=v1.0.0-rc1 ./get.sh` | `.\get.ps1 -Version v1.0.0-rc1` |
+| Contributor / unreleased | `./get.sh --channel dev` | `.\get.ps1 -Channel dev` |
+| A specific branch | `./get.sh --branch my/topic` | `.\get.ps1 -Branch my/topic` |
+
+The latest release is resolved from the GitHub API's `/releases/latest`, which
+**excludes prereleases**: an rc has to be asked for by name and is never handed
+to someone who just ran the one-liner.
+
+**When no release exists yet** — the state the repository is in today — the
+default install prints a four-line warning naming the fallback, then installs
+the `main` branch, which is the only branch a final release tag may point at
+([ADR-073126-c4e1](../adr/ADR-073126-c4e1-release-and-versioning-process.md) §2).
+The same fallback covers an unreachable or rate-limited API. Pass
+`--require-release` / `-RequireRelease` (or set `MAISTRO_REQUIRE_RELEASE=1`) to
+turn that fallback into a hard failure, which is what CI and any reproducible
+install should do.
+
+Image tags follow the source tree: a tagged install exports
+`MAISTRO_IMAGE_TAG=vX.Y.Z`, so the `image_pull` compose the wizard generates
+pins `ghcr.io/blakematthews-dev/{maistro-engine,hive-conductor}:vX.Y.Z` rather
+than `:latest`. A branch install uses `latest`, and `install.sh` run directly
+out of a tree derives the tag from `git describe --tags --exact-match`.
+
 ## Preflight
 
 The plan includes a best-effort `environment` report with:
