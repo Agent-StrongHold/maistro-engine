@@ -60,12 +60,14 @@ class TestCredentialRecord:
 
 
 class TestSelectionStrategies:
+    @pytest.mark.ac("ADR-063/AC-1")
     def test_fill_first_selects_first_available(self):
         pool = CredentialPool(
             "openai", [_rec("a"), _rec("b"), _rec("c")], SelectionStrategy.FILL_FIRST
         )
         assert pool.select().key_id == "a"
 
+    @pytest.mark.ac("ADR-063/AC-1")
     def test_fill_first_respects_priority_order(self):
         pool = CredentialPool(
             "openai",
@@ -74,6 +76,7 @@ class TestSelectionStrategies:
         )
         assert pool.select().key_id == "a"
 
+    @pytest.mark.ac("ADR-063/AC-2")
     def test_fill_first_falls_to_next_on_cooldown(self):
         pool = CredentialPool(
             "openai",
@@ -82,14 +85,17 @@ class TestSelectionStrategies:
         )
         assert pool.select().key_id == "b"
 
+    @pytest.mark.ac("ADR-063/AC-3")
     def test_round_robin_cycles(self):
         pool = _pool(["a", "b", "c"], SelectionStrategy.ROUND_ROBIN)
         assert [pool.select().key_id for _ in range(3)] == ["a", "b", "c"]
 
+    @pytest.mark.ac("ADR-063/AC-4")
     def test_round_robin_wraps(self):
         pool = _pool(["a", "b", "c"], SelectionStrategy.ROUND_ROBIN)
         assert [pool.select().key_id for _ in range(5)] == ["a", "b", "c", "a", "b"]
 
+    @pytest.mark.ac("ADR-063/AC-5")
     def test_round_robin_skips_cooldown(self):
         pool = CredentialPool(
             "openai",
@@ -98,6 +104,7 @@ class TestSelectionStrategies:
         )
         assert [pool.select().key_id for _ in range(4)] == ["a", "c", "a", "c"]
 
+    @pytest.mark.ac("ADR-063/AC-9")
     def test_round_robin_skips_blocked(self):
         pool = CredentialPool(
             "openai",
@@ -106,6 +113,7 @@ class TestSelectionStrategies:
         )
         assert [pool.select().key_id for _ in range(4)] == ["a", "c", "a", "c"]
 
+    @pytest.mark.ac("ADR-063/AC-6")
     def test_random_only_picks_available(self):
         pool = CredentialPool(
             "openai",
@@ -115,6 +123,7 @@ class TestSelectionStrategies:
         for _ in range(100):
             assert pool.select().key_id in ("a", "b")
 
+    @pytest.mark.ac("ADR-063/AC-6")
     def test_random_distributes(self):
         pool = _pool(["a", "b"], SelectionStrategy.RANDOM)
         counts = {"a": 0, "b": 0}
@@ -122,6 +131,7 @@ class TestSelectionStrategies:
             counts[pool.select().key_id] += 1
         assert all(50 <= v <= 150 for v in counts.values())
 
+    @pytest.mark.ac("ADR-063/AC-7")
     def test_least_used_picks_lowest_count(self):
         pool = CredentialPool(
             "openai",
@@ -130,6 +140,7 @@ class TestSelectionStrategies:
         )
         assert pool.select().key_id == "b"
 
+    @pytest.mark.ac("ADR-063/AC-8")
     def test_least_used_breaks_ties_by_priority(self):
         pool = CredentialPool(
             "openai",
@@ -145,6 +156,7 @@ class TestSelectionStrategies:
 
 class TestAutomaticRotation:
     @patch("asyncio.sleep", new_callable=AsyncMock)
+    @pytest.mark.ac("ADR-063/AC-10")
     async def test_rotate_on_429(self, _mock_sleep):
         pool = _pool(["a", "b"], SelectionStrategy.FILL_FIRST)
 
@@ -161,6 +173,8 @@ class TestAutomaticRotation:
         assert key_a.cooldown_until is not None
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
+    @pytest.mark.ac("ADR-063/AC-12")
+    @pytest.mark.ac("ADR-063/AC-26")
     async def test_429_default_cooldown_is_60_seconds(self, _mock_sleep):
         pool = _pool(["a", "b"], SelectionStrategy.FILL_FIRST)
 
@@ -175,6 +189,7 @@ class TestAutomaticRotation:
         assert 55 < remaining <= 60
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
+    @pytest.mark.ac("ADR-063/AC-11")
     async def test_429_with_retry_after_header(self, _mock_sleep):
         pool = _pool(["a", "b"], SelectionStrategy.FILL_FIRST)
 
@@ -189,6 +204,7 @@ class TestAutomaticRotation:
         assert 25 < remaining <= 30
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
+    @pytest.mark.ac("ADR-063/AC-27")
     async def test_429_retry_after_capped_at_60(self, _mock_sleep):
         pool = _pool(["a", "b"], SelectionStrategy.FILL_FIRST)
 
@@ -203,6 +219,7 @@ class TestAutomaticRotation:
         assert 55 < remaining <= 60
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
+    @pytest.mark.ac("ADR-063/AC-13")
     async def test_inner_loop_retries_transient(self, _mock_sleep):
         pool = _pool(["a"])
         calls: list[str] = []
@@ -223,6 +240,7 @@ class TestAutomaticRotation:
         assert result.key_rotations == 0
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
+    @pytest.mark.ac("ADR-063/AC-14")
     async def test_transient_errors_set_no_cooldown(self, _mock_sleep):
         pool = _pool(["a"])
         attempt = 0
@@ -247,6 +265,7 @@ class TestAutomaticRotation:
 
 
 class TestPoolExhaustion:
+    @pytest.mark.ac("ADR-063/AC-17")
     def test_all_keys_in_cooldown(self):
         pool = CredentialPool(
             "openai",
@@ -262,6 +281,7 @@ class TestPoolExhaustion:
         assert err.total_keys == 2
         assert 20 < err.wait_seconds <= 30
 
+    @pytest.mark.ac("ADR-063/AC-18")
     def test_all_keys_blocked(self):
         pool = CredentialPool("openai", [_rec("a", blocked=True)])
         with pytest.raises(PoolExhaustedError) as exc_info:
@@ -276,6 +296,7 @@ class TestPoolExhaustion:
             pool.select()
         assert exc_info.value.total_keys == 1
 
+    @pytest.mark.ac("ADR-063/AC-20")
     def test_error_contains_provider(self):
         pool = CredentialPool(
             "anthropic", [_rec("x", provider="anthropic", cooldown_until=time.monotonic() + 60)]
@@ -302,16 +323,19 @@ class TestPoolExhaustion:
 
 
 class TestCooldownAndRecovery:
+    @pytest.mark.ac("ADR-063/AC-21")
     def test_available_after_cooldown_expires(self):
         rec = _rec("a", cooldown_until=time.monotonic() - 1)
         pool = CredentialPool("openai", [rec, _rec("b")])
         assert pool.select().key_id == "a"
 
+    @pytest.mark.ac("ADR-063/AC-22")
     def test_unavailable_during_cooldown(self):
         pool = CredentialPool("openai", [_rec("a", cooldown_until=time.monotonic() + 60)])
         with pytest.raises(PoolExhaustedError):
             pool.select()
 
+    @pytest.mark.ac("ADR-063/AC-23")
     def test_record_success_clears_error_state(self):
         rec = _rec("a", last_error_code="rate_limit", use_count=5)
         pool = CredentialPool("openai", [rec])
@@ -321,6 +345,7 @@ class TestCooldownAndRecovery:
         assert rec.use_count == 6
         assert rec.last_used_at is not None
 
+    @pytest.mark.ac("ADR-063/AC-24")
     def test_401_blocks_key(self):
         pool = CredentialPool("openai", [_rec("a"), _rec("b")])
         pool.record_failure("a", status_code=401, block=True)
@@ -328,12 +353,14 @@ class TestCooldownAndRecovery:
         assert key_a.blocked is True
         assert key_a.is_available is False
 
+    @pytest.mark.ac("ADR-063/AC-25")
     def test_403_blocks_key(self):
         pool = CredentialPool("openai", [_rec("a"), _rec("b")])
         pool.record_failure("a", status_code=403, block=True)
         key_a = next(e for e in pool._entries if e.key_id == "a")
         assert key_a.blocked is True
 
+    @pytest.mark.ac("ADR-063/AC-26")
     def test_rate_limit_cooldown_set(self):
         pool = _pool(["a"])
         pool.record_failure("a", status_code=429, error_code="rate_limit", cooldown_seconds=60)
@@ -366,6 +393,7 @@ class TestCooldownAndRecovery:
 
 
 class TestPoolStats:
+    @pytest.mark.ac("ADR-063/AC-28")
     def test_stats_reflect_current_state(self):
         pool = CredentialPool(
             "openai",
@@ -394,6 +422,7 @@ class TestPoolStats:
             assert "error_count" in r
             assert "available" in r
 
+    @pytest.mark.ac("ADR-063/AC-30")
     def test_record_success_increments_use_count(self):
         rec = _rec("a")
         pool = CredentialPool("openai", [rec])
@@ -401,12 +430,14 @@ class TestPoolStats:
         assert rec.use_count == 1
         assert rec.last_used_at is not None
 
+    @pytest.mark.ac("ADR-063/AC-31")
     def test_record_failure_increments_error_count(self):
         rec = _rec("a")
         pool = CredentialPool("openai", [rec])
         pool.record_failure("a", status_code=429, error_code="rate_limit")
         assert rec.error_count == 1
 
+    @pytest.mark.ac("ADR-063/AC-32")
     def test_stats_reports_strategy(self):
         pool = _pool(["a"], strategy=SelectionStrategy.LEAST_USED)
         assert pool.get_stats().strategy == SelectionStrategy.LEAST_USED
@@ -452,6 +483,7 @@ class TestRotationIntegration:
         assert exc_info.value.provider == "openai"
         assert exc_info.value.total_keys == 2
 
+    @pytest.mark.ac("ADR-063/AC-30")
     async def test_success_records_use_count(self):
         pool = _pool(["a"])
 

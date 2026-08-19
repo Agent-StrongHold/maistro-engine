@@ -13,13 +13,13 @@
     "specs_with_ac_heading": 166,
     "specs_with_ac_ids": 15,
     "specs_awaiting_retrofit": 152,
-    "criteria_declared": 235,
+    "criteria_declared": 267,
     "criteria_annotated": 55,
-    "markers_found": 136,
+    "markers_found": 164,
     "markers_without_criterion": 2,
     "criteria_claimed_but_unproven": 0,
     "gherkin_criteria": 63,
-    "scenarios_without_ac_tag": 96,
+    "scenarios_without_ac_tag": 64,
     "gherkin_parse_errors": 0,
     "completion_claims_contradicted": 6,
     "completion_claims_unverifiable": 71
@@ -7002,44 +7002,260 @@
         "SPEC-222"
       ],
       "measurable_specs": 0,
-      "own_criteria": 0,
-      "own_detail": [],
-      "scenarios_without_ac_tag": [
-        "fill_first selects highest-priority available key",
-        "fill_first falls to next priority when top key is in cooldown",
-        "round_robin cycles through keys in order",
-        "round_robin wraps around after exhausting the pool",
-        "round_robin skips keys in cooldown",
-        "random selects from available keys only",
-        "least_used selects the key with fewest uses",
-        "least_used breaks ties by priority",
-        "all strategies skip blocked keys",
-        "429 on first key rotates to second key and request succeeds",
-        "429 with Retry-After header sets cooldown to that value",
-        "429 without Retry-After header defaults to 60-second cooldown",
-        "inner loop retries transient 5xx on same key before rotating",
-        "transient errors do not trigger cooldown",
-        "402 rotates to next key with 1-hour cooldown",
-        "402 on all keys causes pool exhaustion",
-        "all keys in cooldown raises PoolExhaustedError with soonest recovery",
-        "all keys blocked raises PoolExhaustedError with infinite wait",
-        "single-key pool exhaustion on 429",
-        "PoolExhaustedError includes provider name",
-        "key becomes available after cooldown expires",
-        "key is not available during cooldown",
-        "release with success clears error state but preserves use_count",
-        "permanent error (401) blocks key immediately",
-        "403 blocks key immediately",
-        "cooldown duration is capped at 60 seconds for rate limit",
-        "cooldown from Retry-After is capped at 60 seconds",
-        "pool stats reflect current state",
-        "pool stats include per-key breakdown",
-        "acquire increments use_count and updates last_used_at",
-        "error response increments error_count",
-        "stats report strategy name"
+      "own_criteria": 32,
+      "own_detail": [
+        {
+          "id": "ADR-063/AC-1",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-2",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-3",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-4",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-5",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-6",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-7",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-8",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-9",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-10",
+          "module": "maistro.credentials.rotation",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-11",
+          "module": "maistro.credentials.rotation",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-12",
+          "module": "maistro.credentials.rotation",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-13",
+          "module": "maistro.credentials.rotation",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-14",
+          "module": "maistro.credentials.rotation",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-15",
+          "module": "maistro.credentials.rotation",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-063/AC-16",
+          "module": "maistro.credentials.rotation",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-063/AC-17",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-18",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-19",
+          "module": "maistro.credentials.rotation",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-063/AC-20",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-21",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-22",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-23",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-24",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-25",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-26",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-27",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-28",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-29",
+          "module": "maistro.credentials.pool",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-063/AC-30",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-31",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "ADR-063/AC-32",
+          "module": "maistro.credentials.pool",
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
+        }
       ],
+      "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "declared"
     },
     {
       "id": "ADR-063026-a91f",

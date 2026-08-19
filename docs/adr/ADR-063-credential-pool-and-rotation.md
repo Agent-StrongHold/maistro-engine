@@ -14,6 +14,39 @@ blocked-by: []
 contracts:
   - behavioral
 tests: []
+ac-modules:
+  AC-1: maistro.credentials.pool
+  AC-2: maistro.credentials.pool
+  AC-3: maistro.credentials.pool
+  AC-4: maistro.credentials.pool
+  AC-5: maistro.credentials.pool
+  AC-6: maistro.credentials.pool
+  AC-7: maistro.credentials.pool
+  AC-8: maistro.credentials.pool
+  AC-9: maistro.credentials.pool
+  AC-10: maistro.credentials.rotation
+  AC-11: maistro.credentials.rotation
+  AC-12: maistro.credentials.rotation
+  AC-13: maistro.credentials.rotation
+  AC-14: maistro.credentials.rotation
+  AC-15: maistro.credentials.rotation
+  AC-16: maistro.credentials.rotation
+  AC-17: maistro.credentials.pool
+  AC-18: maistro.credentials.pool
+  AC-19: maistro.credentials.rotation
+  AC-20: maistro.credentials.pool
+  AC-21: maistro.credentials.pool
+  AC-22: maistro.credentials.pool
+  AC-23: maistro.credentials.pool
+  AC-24: maistro.credentials.pool
+  AC-25: maistro.credentials.pool
+  AC-26: maistro.credentials.pool
+  AC-27: maistro.credentials.pool
+  AC-28: maistro.credentials.pool
+  AC-29: maistro.credentials.pool
+  AC-30: maistro.credentials.pool
+  AC-31: maistro.credentials.pool
+  AC-32: maistro.credentials.pool
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
@@ -221,6 +254,26 @@ maistro/credentials/
 
 ### Feature: Pool selection strategies
 
+> **Measurement note (2026-08-19).** These 32 scenarios are tagged `@AC-N` and
+> measured by `scripts/check-ac-state.py`. Twenty-eight are bound to passing
+> tests. Four stay `declared`:
+>
+> - **AC-15, AC-16, AC-19** — the 402/429 paths *through a request*. The
+>   cooldown mechanics they rely on are proven (`record_failure` with a billing
+>   cooldown, single-key exhaustion), but no test drives the specific
+>   request-execution sequence each scenario describes, so binding one would
+>   claim more than it shows.
+> - **AC-29** — requires each per-key stats record to include `is_available`.
+>   The implementation emits `available`. A one-word contract drift, recorded
+>   rather than papered over: either the scenario or `PoolStats.per_key` has to
+>   move.
+>
+> Every bound criterion caps at `passing`, not `reachable`: both
+> `maistro.credentials.pool` and `maistro.credentials.rotation` are in
+> `quality/reachability-baseline.json`. The key pool rotates, cools down,
+> blocks on 401/403 and reports stats — and nothing in a running process calls
+> it. Same shape as ADR-066's P1 layer.
+
 ```gherkin
 Feature: Credential pool selection strategies
   As the evolution engine
@@ -234,33 +287,39 @@ Feature: Credential pool selection strategies
       | key-b  | 5        |
       | key-c  | 1        |
 
+  @AC-1
   Scenario: fill_first selects highest-priority available key
     Given the pool strategy is "fill_first"
     When I acquire a credential for "openai"
     Then the selected key_id is "key-a"
 
+  @AC-2
   Scenario: fill_first falls to next priority when top key is in cooldown
     Given the pool strategy is "fill_first"
     And key "key-a" is in cooldown for 60 seconds
     When I acquire a credential for "openai"
     Then the selected key_id is "key-b"
 
+  @AC-3
   Scenario: round_robin cycles through keys in order
     Given the pool strategy is "round_robin"
     When I acquire a credential for "openai" 3 times in sequence
     Then the selections are ["key-a", "key-b", "key-c"]
 
+  @AC-4
   Scenario: round_robin wraps around after exhausting the pool
     Given the pool strategy is "round_robin"
     When I acquire a credential for "openai" 5 times in sequence
     Then the selections are ["key-a", "key-b", "key-c", "key-a", "key-b"]
 
+  @AC-5
   Scenario: round_robin skips keys in cooldown
     Given the pool strategy is "round_robin"
     And key "key-b" is in cooldown for 60 seconds
     When I acquire a credential for "openai" 4 times in sequence
     Then the selections are ["key-a", "key-c", "key-a", "key-c"]
 
+  @AC-6
   Scenario: random selects from available keys only
     Given the pool strategy is "random"
     And key "key-c" is in cooldown for 60 seconds
@@ -268,6 +327,7 @@ Feature: Credential pool selection strategies
     Then only keys ["key-a", "key-b"] are ever selected
     And each key is selected between 30 and 70 times
 
+  @AC-7
   Scenario: least_used selects the key with fewest uses
     Given the pool strategy is "least_used"
     And key "key-a" has been used 10 times
@@ -276,6 +336,7 @@ Feature: Credential pool selection strategies
     When I acquire a credential for "openai"
     Then the selected key_id is "key-b"
 
+  @AC-8
   Scenario: least_used breaks ties by priority
     Given the pool strategy is "least_used"
     And key "key-a" has been used 5 times
@@ -284,6 +345,7 @@ Feature: Credential pool selection strategies
     When I acquire a credential for "openai"
     Then the selected key_id is "key-a"
 
+  @AC-9
   Scenario: all strategies skip blocked keys
     Given the pool strategy is "round_robin"
     And key "key-b" is permanently blocked
@@ -299,6 +361,7 @@ Feature: Automatic key rotation on rate-limit (429) errors
   I want the pool to automatically rotate to the next key on 429 errors
   So that overnight runs survive rate limits without human intervention
 
+  @AC-10
   Scenario: 429 on first key rotates to second key and request succeeds
     Given a credential pool for "openai" with keys ["key-a", "key-b"]
     And the pool strategy is "fill_first"
@@ -308,16 +371,19 @@ Feature: Automatic key rotation on rate-limit (429) errors
     And key "key-a" is in cooldown
     And key "key-b" is available
 
+  @AC-11
   Scenario: 429 with Retry-After header sets cooldown to that value
     Given a credential pool for "openai" with keys ["key-a", "key-b"]
     When I execute a request that returns 429 on "key-a" with Retry-After 30
     Then key "key-a" cooldown is 30 seconds
 
+  @AC-12
   Scenario: 429 without Retry-After header defaults to 60-second cooldown
     Given a credential pool for "openai" with keys ["key-a", "key-b"]
     When I execute a request that returns 429 on "key-a" without Retry-After header
     Then key "key-a" cooldown is 60 seconds
 
+  @AC-13
   Scenario: inner loop retries transient 5xx on same key before rotating
     Given a credential pool for "openai" with keys ["key-a"]
     And the inner loop max retries is 3
@@ -326,6 +392,7 @@ Feature: Automatic key rotation on rate-limit (429) errors
     And "key-a" was attempted 3 times
     And no key rotation occurred
 
+  @AC-14
   Scenario: transient errors do not trigger cooldown
     Given a credential pool for "openai" with keys ["key-a"]
     When I execute a request that returns 500 then 200 on "key-a"
@@ -340,6 +407,7 @@ Feature: Automatic key rotation on billing (402) errors
   I want the pool to rotate to the next key on 402 billing exhaustion
   So that a depleted billing account does not halt the run
 
+  @AC-15
   Scenario: 402 rotates to next key with 1-hour cooldown
     Given a credential pool for "openai" with keys ["key-a", "key-b"]
     And the pool strategy is "fill_first"
@@ -348,6 +416,7 @@ Feature: Automatic key rotation on billing (402) errors
     Then the result is returned successfully
     And key "key-a" cooldown is 3600 seconds
 
+  @AC-16
   Scenario: 402 on all keys causes pool exhaustion
     Given a credential pool for "openai" with keys ["key-a", "key-b"]
     When I execute a request that returns 402 on "key-a"
@@ -364,6 +433,7 @@ Feature: PoolExhaustedError when all keys are unavailable
   I want a clear error when all keys are exhausted
   So that I can decide whether to wait, fail gracefully, or alert
 
+  @AC-17
   Scenario: all keys in cooldown raises PoolExhaustedError with soonest recovery
     Given a credential pool for "openai" with keys ["key-a", "key-b"]
     And key "key-a" is in cooldown for 30 seconds
@@ -373,6 +443,7 @@ Feature: PoolExhaustedError when all keys are unavailable
     And error.wait_seconds is approximately 30
     And error.cooling_down_keys is 2
 
+  @AC-18
   Scenario: all keys blocked raises PoolExhaustedError with infinite wait
     Given a credential pool for "openai" with keys ["key-a"]
     And key "key-a" is permanently blocked
@@ -381,12 +452,14 @@ Feature: PoolExhaustedError when all keys are unavailable
     And error.blocked_keys is 1
     And error.wait_seconds is negative or zero
 
+  @AC-19
   Scenario: single-key pool exhaustion on 429
     Given a credential pool for "openai" with keys ["key-a"]
     When I execute a request that returns 429 on "key-a"
     Then a PoolExhaustedError is raised
     And error.total_keys is 1
 
+  @AC-20
   Scenario: PoolExhaustedError includes provider name
     Given a credential pool for "anthropic" with keys ["key-x"]
     And key "key-x" is in cooldown for 60 seconds
@@ -403,17 +476,20 @@ Feature: Cooldown expiration and key recovery
   I want keys to become available again after their cooldown expires
   So that the pool self-heals without manual intervention
 
+  @AC-21
   Scenario: key becomes available after cooldown expires
     Given a credential pool for "openai" with keys ["key-a", "key-b"]
     And key "key-a" was put in cooldown 61 seconds ago with duration 60
     When I acquire a credential for "openai"
     Then key "key-a" is available and can be selected
 
+  @AC-22
   Scenario: key is not available during cooldown
     Given a credential pool for "openai" with keys ["key-a"]
     And key "key-a" was put in cooldown 10 seconds ago with duration 60
     Then key "key-a" is not available
 
+  @AC-23
   Scenario: release with success clears error state but preserves use_count
     Given a credential pool for "openai" with keys ["key-a"]
     And key "key-a" has last_error_code "rate_limit" and use_count 5
@@ -422,22 +498,26 @@ Feature: Cooldown expiration and key recovery
     And key "key-a" last_error_code is None
     And key "key-a" use_count is 6
 
+  @AC-24
   Scenario: permanent error (401) blocks key immediately
     Given a credential pool for "openai" with keys ["key-a", "key-b"]
     When I release "key-a" with status 401
     Then key "key-a" is permanently blocked
     And key "key-a" is not available
 
+  @AC-25
   Scenario: 403 blocks key immediately
     Given a credential pool for "openai" with keys ["key-a", "key-b"]
     When I release "key-a" with status 403
     Then key "key-a" is permanently blocked
 
+  @AC-26
   Scenario: cooldown duration is capped at 60 seconds for rate limit
     Given a credential pool for "openai" with keys ["key-a"]
     When I release "key-a" with status 429 and no Retry-After header
     Then key "key-a" cooldown is at most 60 seconds
 
+  @AC-27
   Scenario: cooldown from Retry-After is capped at 60 seconds
     Given a credential pool for "openai" with keys ["key-a"]
     When I release "key-a" with status 429 and Retry-After 300
@@ -452,6 +532,7 @@ Feature: Credential pool statistics and reporting
   I want visibility into pool health and key utilization
   So that I can detect blocked keys, uneven load, and exhaustion risk
 
+  @AC-28
   Scenario: pool stats reflect current state
     Given a credential pool for "openai" with keys ["key-a", "key-b", "key-c"]
     And key "key-a" has use_count 100 and error_count 2
@@ -465,12 +546,14 @@ Feature: Credential pool statistics and reporting
     And total_use_count is 180
     And total_error_count is 2
 
+  @AC-29
   Scenario: pool stats include per-key breakdown
     Given a credential pool for "openai" with keys ["key-a", "key-b"]
     When I get stats for "openai"
     Then per_key contains records for "key-a" and "key-b"
     And each record includes key_id, use_count, error_count, and is_available
 
+  @AC-30
   Scenario: acquire increments use_count and updates last_used_at
     Given a credential pool for "openai" with keys ["key-a"]
     And key "key-a" has use_count 0
@@ -478,11 +561,13 @@ Feature: Credential pool statistics and reporting
     Then key "key-a" use_count is 1
     And key "key-a" last_used_at is set to the current time
 
+  @AC-31
   Scenario: error response increments error_count
     Given a credential pool for "openai" with keys ["key-a"]
     When I release "key-a" with status 429 and an error
     Then key "key-a" error_count is 1
 
+  @AC-32
   Scenario: stats report strategy name
     Given a credential pool for "openai" with strategy "least_used"
     When I get stats for "openai"
