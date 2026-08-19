@@ -19,7 +19,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from maistro.capabilities.slots.approval import ApprovalRequest
 
-
 _SENSITIVE_KEY_PARTS = (
     "authorization",
     "credential",
