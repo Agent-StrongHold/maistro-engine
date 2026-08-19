@@ -1,19 +1,10 @@
-"""Phase 5 — Signal #5: per-node latency + token metrics aggregator.
+"""Per-node latency and token metrics aggregation for durable graph runs.
 
-When a durable run completes, the runner calls
-`record_run_completion(run)` and this module fans every COMPLETED
-DurableNodeRecord into a ring-buffered observation. The endpoint
-`GET /v1/dag-runs/metrics` reads back per-node aggregates over a time
-window (default 1h):
-
-  - count, p50, p95, p99 latency_ms
-  - total + mean tokens_in / tokens_out
-  - success rate (COMPLETED / total)
-  - per-(node_kind, project_id) slicing
-
-The store is a fixed-size deque so memory stays bounded across long
-uptimes. Persistent backing lands later — when it does, the public
-API on this module stays stable.
+Canonical durable execution persists Run + NodeRun state. This adapter records
+one observation per NodeRun and derives node type from the immutable Graph
+snapshot on the Run. Attempt-level token, model, and cost metrics are not yet
+part of this durable slice, so those fields remain zero/empty until Attempt is
+routed through ExecutionRuntime.
 """
 
 from __future__ import annotations
@@ -37,7 +28,7 @@ class NodeObservation:
     node_kind: str
     project_id: str
     dag_id: str
-    phase: str  # "COMPLETED" | "FAILED" | other
+    phase: str
     latency_ms: int
     tokens_in: int
     tokens_out: int
@@ -123,7 +114,6 @@ class NodeMetricsStore:
             window_seconds=window_seconds,
             now=now,
         )
-        # newest first; cap to `limit`
         return [_to_dict(o) for o in reversed(obs[-limit:])]
 
 
@@ -201,7 +191,6 @@ def _to_dict(obs: NodeObservation) -> dict[str, Any]:
     }
 
 
-# Module-level singleton — replaceable from tests via set_store().
 _store = NodeMetricsStore()
 
 
@@ -214,40 +203,48 @@ def set_store(store: NodeMetricsStore) -> None:
     _store = store
 
 
+def _latency_ms(node_run: Any) -> int:
+    started = getattr(node_run, "started_at", None)
+    finished = getattr(node_run, "finished_at", None)
+    if not isinstance(started, datetime) or not isinstance(finished, datetime):
+        return 0
+    return max(0, int((finished - started).total_seconds() * 1000))
+
+
 def record_run_completion(run_record: Any) -> int:
-    """Ingest every node from a finished DurableRunRecord into the store.
-
-    Accepts the Pydantic record (or any duck-typed object with
-    `.run_id`, `.dag_id`, `.project_id`, and `.node_records[*]` with
-    `node_id`, `kind`, `phase`, `latency_ms`, `tokens_in`, `tokens_out`,
-    `model_used`, `cost_usd`).
-
-    Returns the number of node observations appended.
-    """
+    """Ingest canonical NodeRuns from a finished durable run record."""
     if run_record is None:
         return 0
-    run_id = str(getattr(run_record, "run_id", "") or "")
-    project_id = str(getattr(run_record, "project_id", "") or "")
-    dag_id = str(getattr(run_record, "dag_id", "") or "")
-    records = getattr(run_record, "node_records", None) or []
+
+    run = getattr(run_record, "run", None)
+    if run is None:
+        return 0
+    graph_snapshot = getattr(run, "graph", None)
+    graph = graph_snapshot.materialize() if graph_snapshot is not None else None
+    node_kinds = {node.node_id: node.node_type for node in getattr(graph, "nodes", ())}
+
+    run_id = str(getattr(run, "run_id", "") or "")
+    project_id = str(getattr(run, "project_id", "") or "")
+    dag_id = str(getattr(graph, "graph_id", "") or "")
+    records = getattr(run_record, "node_runs", None) or ()
+
     appended = 0
-    for nr in records:
-        phase = getattr(nr, "phase", "")
-        # Phase is a StrEnum — coerce via str() so the str-comparison
-        # in `_aggregate` sees the canonical "COMPLETED" / "FAILED" form.
-        phase_str = str(phase).split(".")[-1] if phase else ""
+    for node_run in records:
+        status = getattr(node_run, "status", "")
+        phase = str(getattr(status, "value", status) or "").upper()
+        node_id = str(getattr(node_run, "node_id", "") or "")
         obs = NodeObservation(
             run_id=run_id,
-            node_id=str(getattr(nr, "node_id", "") or ""),
-            node_kind=str(getattr(nr, "kind", "") or ""),
+            node_id=node_id,
+            node_kind=node_kinds.get(node_id, ""),
             project_id=project_id,
             dag_id=dag_id,
-            phase=phase_str.upper(),
-            latency_ms=int(getattr(nr, "latency_ms", 0) or 0),
-            tokens_in=int(getattr(nr, "tokens_in", 0) or 0),
-            tokens_out=int(getattr(nr, "tokens_out", 0) or 0),
-            cost_usd=float(getattr(nr, "cost_usd", 0.0) or 0.0),
-            model_used=str(getattr(nr, "model_used", "") or ""),
+            phase=phase,
+            latency_ms=_latency_ms(node_run),
+            tokens_in=0,
+            tokens_out=0,
+            cost_usd=0.0,
+            model_used="",
         )
         _store.append(obs)
         appended += 1

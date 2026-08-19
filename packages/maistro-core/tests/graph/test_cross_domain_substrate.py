@@ -4,7 +4,7 @@ The DAG substrate (Node protocol, registry, durable runs, executor,
 Project model) is supposed to be **domain-neutral** — PM Fleet is one
 use case riding on top of it, not part of its definition. These tests
 prove that by composing DAGs for *non-PM* domains and running them
-through the same `run_durable_dag` executor without any PM-specific
+through the same `canonical durable Graph executor without any PM-specific
 hooks.
 
 If a future change accidentally couples the substrate to PM (e.g. a
@@ -22,10 +22,11 @@ from pydantic import BaseModel
 from maistro.graph.durable_runs import (
     InMemoryDurableRunStore,
     RunStatus,
-    run_durable_dag,
 )
 from maistro.graph.nodes import BaseNode, NodeContext, get_node, register_node
 from maistro.projects import InMemoryProjectStore
+
+from ._canonical_helpers import run_legacy_dag_fixture as run_durable_dag
 
 # --- Creative-team (canvas_creative) DAG fixtures -------------------------
 
@@ -204,18 +205,18 @@ async def test_creative_team_canvas_dag_runs_through_durable_executor() -> None:
         project_id="art_proj_1",
     )
     assert result.status == RunStatus.COMPLETED
-    by_id = {nr.node_id: nr for nr in result.node_records}
+    by_id = {nr.node_id: nr for nr in result.node_runs}
     # Brief produced the title/headline.
-    assert by_id["brief"].output is not None
-    assert by_id["brief"].output["title"].startswith("HHN 2026")
-    assert "thrill-seeking" in by_id["brief"].output["headline"]
+    assert by_id["brief"].result is not None
+    assert by_id["brief"].result["title"].startswith("HHN 2026")
+    assert "thrill-seeking" in by_id["brief"].result["headline"]
     # Image-gen consumed brief's output and produced a URL + prompt.
-    assert by_id["img"].output is not None
-    assert by_id["img"].output["image_url"].startswith("https://fake-canvas.local/")
-    assert "cinematic" in by_id["img"].output["prompt"]
+    assert by_id["img"].result is not None
+    assert by_id["img"].result["image_url"].startswith("https://fake-canvas.local/")
+    assert "cinematic" in by_id["img"].result["prompt"]
     # The substrate carried project_id through unchanged.
     assert result.project_id == "art_proj_1"
-    assert result.user_id == "art_director_1"
+    assert result.run.actor_principal_id == "art_director_1"
 
 
 async def test_engineering_rfc_review_dag_runs_through_durable_executor() -> None:
@@ -245,7 +246,7 @@ async def test_engineering_rfc_review_dag_runs_through_durable_executor() -> Non
         dag, store=store, node_resolver=_resolver, project_id="eng_proj_1"
     )
     assert result.status == RunStatus.COMPLETED
-    review = result.node_records[0].output
+    review = result.node_runs[0].result
     assert review is not None
     # Long RFC → high score, no "BREAKING" → approved.
     assert review["score"] >= 5.0
@@ -275,7 +276,7 @@ async def test_engineering_rfc_with_breaking_change_gets_flagged() -> None:
     store = InMemoryDurableRunStore()
     result = await run_durable_dag(dag, store=store, node_resolver=_resolver)
     assert result.status == RunStatus.COMPLETED
-    review = result.node_records[0].output
+    review = result.node_runs[0].result
     assert review is not None
     assert review["approved"] is False
     assert "breaking change flagged" in review["concerns"]
