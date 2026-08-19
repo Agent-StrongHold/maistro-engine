@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+from maistro.capabilities.approval_store import (
+    ApprovalStatus,
+    DurableApproval,
+    InMemoryApprovalStore,
+    SqliteApprovalStore,
+)
 from maistro.capabilities.binding import Binding, ResolvedBinding
 from maistro.capabilities.bootstrap import default_capability_registry
 from maistro.capabilities.discovery import discover_into
 from maistro.capabilities.governed_invocation import (
     GovernedInvocationExecutionService,
+    InvocationApprovalPending,
     InvocationApprovalRequired,
     InvocationDenied,
     InvocationPolicyContext,
@@ -60,11 +67,13 @@ __all__ = [
     "HARNESS_RUNNER_SLOT",
     "ActionGate",
     "AllowAllGate",
+    "ApprovalStatus",
     "AsyncHttp",
     "Binding",
     "CapabilityProvider",
     "CapabilityRegistry",
     "CapabilityUnavailable",
+    "DurableApproval",
     "EffectNotApplied",
     "FallbackPolicy",
     "GovernedInvocationExecutionService",
@@ -73,8 +82,10 @@ __all__ = [
     "HarnessRunner",
     "HarnessSessionManager",
     "HttpxAsyncHttp",
+    "InMemoryApprovalStore",
     "InMemoryInvocationStore",
     "Invocation",
+    "InvocationApprovalPending",
     "InvocationApprovalRequired",
     "InvocationDenied",
     "InvocationExecutionService",
@@ -86,6 +97,7 @@ __all__ = [
     "SafeHarnessRunner",
     "SandboxExec",
     "SlotSpec",
+    "SqliteApprovalStore",
     "SqliteInvocationStore",
     "SubprocessHarnessRunner",
     "Unavailable",
