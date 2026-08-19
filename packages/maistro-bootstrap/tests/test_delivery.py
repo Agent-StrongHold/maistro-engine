@@ -8,7 +8,7 @@ import pytest
 import yaml
 
 from maistro_bootstrap.delivery import (
-    PINNED_IMAGES,
+    pinned_images,
     render_image_pull_compose,
     render_makefile,
 )
@@ -28,18 +28,49 @@ BASE_COMPOSE = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _unpinned_image_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default every test in this module to the unset-MAISTRO_IMAGE_TAG case.
+
+    The tag is read from the environment (E5/#298), so a developer who has
+    exported it — or a CI runner that inherits it from an installer — would
+    otherwise silently change what these tests assert.
+    """
+    monkeypatch.delenv("MAISTRO_IMAGE_TAG", raising=False)
+
+
 def test_image_pull_compose_has_no_build_keys() -> None:
     doc = render_image_pull_compose(BASE_COMPOSE)
     services = doc["services"]
     assert all("build" not in svc for svc in services.values())
-    assert services["maistro-engine"]["image"] == PINNED_IMAGES["maistro-engine"]
-    assert services["hive-conductor"]["image"] == PINNED_IMAGES["hive-conductor"]
+    assert services["maistro-engine"]["image"] == pinned_images()["maistro-engine"]
+    assert services["hive-conductor"]["image"] == pinned_images()["hive-conductor"]
     # image-only services pass through untouched
     assert services["postgres"]["image"] == "pgvector/pgvector:pg17"
     # non-build keys survive
     assert services["maistro-engine"]["ports"] == ["8000:8000"]
     # the input is not mutated
     assert "build" in BASE_COMPOSE["services"]["maistro-engine"]
+
+
+def test_image_tag_follows_the_installed_release(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`get.sh --version v1.0.0` must not hand you `:latest` images.
+
+    Pinning the source tree to a release while the compose stack pulls a
+    moving tag is the failure this exists to prevent: it looks pinned and
+    isn't.
+    """
+    monkeypatch.setenv("MAISTRO_IMAGE_TAG", "v1.0.0")
+    services = render_image_pull_compose(BASE_COMPOSE)["services"]
+    assert services["maistro-engine"]["image"] == "ghcr.io/blakematthews-dev/maistro-engine:v1.0.0"
+    assert services["hive-conductor"]["image"] == "ghcr.io/blakematthews-dev/hive-conductor:v1.0.0"
+
+
+def test_blank_image_tag_falls_back_to_latest(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An empty or whitespace value is 'unset', not a tag named ''."""
+    monkeypatch.setenv("MAISTRO_IMAGE_TAG", "   ")
+    services = render_image_pull_compose(BASE_COMPOSE)["services"]
+    assert services["maistro-engine"]["image"] == "ghcr.io/blakematthews-dev/maistro-engine:latest"
 
 
 def test_unpinned_built_service_is_an_error() -> None:
