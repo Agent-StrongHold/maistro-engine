@@ -208,10 +208,7 @@ def main(argv: list[str]) -> int:
     _print_ledger_failures(missing, changed)
 
     failed = bool(
-        classification.never_allowlist
-        or classification.unclassified
-        or missing
-        or changed
+        classification.never_allowlist or classification.unclassified or missing or changed
     )
     return int(failed)
 
