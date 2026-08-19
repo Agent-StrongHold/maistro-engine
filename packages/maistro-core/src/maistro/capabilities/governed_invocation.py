@@ -29,12 +29,20 @@ from maistro.policy.types import Decision, PolicyVerdict
 
 @dataclass(frozen=True)
 class InvocationPolicyContext:
-    """Canonical execution identity available to capability policy evaluation."""
+    """Canonical execution identity available to capability policy evaluation.
+
+    ``approved`` is false for the ordinary prospective evaluation. When a
+    durable human approval already exists for the exact logical effect payload,
+    the evaluator is called once more with ``approved=True`` before provider
+    dispatch. Stateful evaluators such as ``SequencePolicyEngine.charge`` must
+    use that flag so the approved action is committed to cumulative policy state.
+    """
 
     run_id: str
     node_run_id: str
     attempt_id: str
     effect_key: str
+    approved: bool = False
 
 
 PolicyEvaluator = Callable[[Binding, Any, InvocationPolicyContext], Awaitable[PolicyVerdict]]
@@ -114,25 +122,10 @@ class GovernedInvocationExecutionService:
             effect_key=effect_key,
         )
         verdict = await self._policy(binding, request, context)
-        policy_event = await self._events.append(
-            EventEnvelope(
-                type="capability.invocation.policy_decision",
-                workspace_id=binding.workspace_id,
-                project_id=binding.project_id,
-                run_id=run_id,
-                node_run_id=node_run_id,
-                attempt_id=attempt_id,
-                correlation_id=run_id,
-                source="maistro.capabilities",
-                payload={
-                    "binding_id": binding.binding_id,
-                    "capability": binding.capability,
-                    "effect_key": effect_key,
-                    "decision": verdict.decision.value,
-                    "reason": verdict.reason,
-                    "rule": verdict.rule,
-                },
-            )
+        policy_event = await self._append_policy_event(
+            binding=binding,
+            context=context,
+            verdict=verdict,
         )
 
         if verdict.decision is Decision.DENY:
@@ -145,7 +138,7 @@ class GovernedInvocationExecutionService:
             effect_key=effect_key,
         )
         if existing_approval is not None or verdict.decision is Decision.REQUIRE_APPROVAL:
-            await self._enforce_approval(
+            policy_event = await self._enforce_approval(
                 binding=binding,
                 run_id=run_id,
                 node_run_id=node_run_id,
@@ -194,6 +187,37 @@ class GovernedInvocationExecutionService:
         )
         return invocation
 
+    async def _append_policy_event(
+        self,
+        *,
+        binding: Binding,
+        context: InvocationPolicyContext,
+        verdict: PolicyVerdict,
+        causation_id: str | None = None,
+    ) -> EventEnvelope:
+        return await self._events.append(
+            EventEnvelope(
+                type="capability.invocation.policy_decision",
+                workspace_id=binding.workspace_id,
+                project_id=binding.project_id,
+                run_id=context.run_id,
+                node_run_id=context.node_run_id,
+                attempt_id=context.attempt_id,
+                correlation_id=context.run_id,
+                causation_id=causation_id,
+                source="maistro.capabilities",
+                payload={
+                    "binding_id": binding.binding_id,
+                    "capability": binding.capability,
+                    "effect_key": context.effect_key,
+                    "approved": context.approved,
+                    "decision": verdict.decision.value,
+                    "reason": verdict.reason,
+                    "rule": verdict.rule,
+                },
+            )
+        )
+
     async def _find_approval(
         self,
         *,
@@ -223,7 +247,7 @@ class GovernedInvocationExecutionService:
         verdict: PolicyVerdict,
         policy_event: EventEnvelope,
         existing: DurableApproval | None = None,
-    ) -> None:
+    ) -> EventEnvelope:
         if self._approvals is None:
             raise InvocationApprovalRequired(
                 verdict.reason or "capability invocation requires approval"
@@ -243,6 +267,25 @@ class GovernedInvocationExecutionService:
                     f"approval {existing.request.request_id!r} does not match the current request"
                 )
             if existing.status is ApprovalStatus.APPROVED:
+                approved_context = InvocationPolicyContext(
+                    run_id=run_id,
+                    node_run_id=node_run_id,
+                    attempt_id=attempt_id,
+                    effect_key=effect_key,
+                    approved=True,
+                )
+                approved_verdict = await self._policy(binding, request, approved_context)
+                approved_policy_event = await self._append_policy_event(
+                    binding=binding,
+                    context=approved_context,
+                    verdict=approved_verdict,
+                    causation_id=policy_event.event_id,
+                )
+                if approved_verdict.decision is not Decision.ALLOW:
+                    raise InvocationDenied(
+                        approved_verdict.reason
+                        or "approved capability invocation was not accepted by policy"
+                    )
                 await self._events.append(
                     EventEnvelope(
                         type="capability.invocation.approval_satisfied",
@@ -252,7 +295,7 @@ class GovernedInvocationExecutionService:
                         node_run_id=node_run_id,
                         attempt_id=attempt_id,
                         correlation_id=run_id,
-                        causation_id=policy_event.event_id,
+                        causation_id=approved_policy_event.event_id,
                         source="maistro.capabilities",
                         payload={
                             "request_id": existing.request.request_id,
@@ -262,7 +305,7 @@ class GovernedInvocationExecutionService:
                         },
                     )
                 )
-                return
+                return approved_policy_event
             if existing.status is ApprovalStatus.DENIED:
                 raise InvocationDenied(f"approval {existing.request.request_id!r} was denied")
             await self._emit_approval_required(
