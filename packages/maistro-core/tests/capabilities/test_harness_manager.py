@@ -13,7 +13,7 @@ from maistro.capabilities.bootstrap import default_capability_registry
 from maistro.capabilities.governed_invocation import GovernedInvocationExecutionService
 from maistro.capabilities.harness_manager import HarnessSessionManager
 from maistro.capabilities.invocation import InMemoryInvocationStore, InvocationExecutionService
-from maistro.capabilities.slots.harness_runner import HarnessInputBlocked, SLOT_NAME
+from maistro.capabilities.slots.harness_runner import SLOT_NAME, HarnessInputBlocked
 from maistro.capabilities.types import Unavailable
 from maistro.events.envelope import InMemoryEventStore
 from maistro.policy import AfterCountRule, SequencePolicyEngine
