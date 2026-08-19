@@ -102,8 +102,8 @@ def test_state_can_seed_transition_from_frozen_checkpoint_data() -> None:
         blackboard_snapshot={"review": {"history": ["draft", "approved"]}},
         metadata={
             "hitl_answers": {
-                "review": {"answer": "approved", "tags": ["human", "approved"]}
-            }
+                "review": {"answer": "approved", "tags": ["human", "approved"]},
+            },
         },
     )
 
