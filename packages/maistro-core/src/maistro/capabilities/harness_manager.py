@@ -11,7 +11,9 @@ and the inbound ``/v1/harness/sessions`` route build on:
   :class:`PolicyActionGate` gates every outbound action (cumulative/sequence
   budgets across the whole session);
 - when the slot is absent, disabled, or unhealthy it degrades to a typed
-  ``Unavailable`` (SAFE_NOOP) — it never raises for a missing harness.
+  ``Unavailable`` (SAFE_NOOP) — it never raises for a missing harness;
+- canonical execution can route a session turn through
+  ``Binding -> policy -> Invocation`` without bypassing the existing safety wrapper.
 """
 
 from __future__ import annotations
@@ -20,9 +22,12 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from maistro.agents.spec.agent_spec import AgentSpec
+from maistro.capabilities.binding import Binding
+from maistro.capabilities.governed_invocation import GovernedInvocationExecutionService
+from maistro.capabilities.invocation import CapabilityUnavailable, EffectNotApplied
 from maistro.capabilities.providers.harness_safety import ActionGate, SafeHarnessRunner
 from maistro.capabilities.registry import CapabilityRegistry
-from maistro.capabilities.slots.harness_runner import SLOT_NAME, HarnessRunner
+from maistro.capabilities.slots.harness_runner import SLOT_NAME, HarnessInputBlocked, HarnessRunner
 from maistro.capabilities.types import Unavailable
 from maistro.policy.engine import SequencePolicyEngine
 from maistro.policy.gate import PolicyActionGate
@@ -61,6 +66,97 @@ class HarnessSessionManager:
         if safe is None:
             return Unavailable(slot=SLOT_NAME, reason=f"unknown harness session: {session_id}")
         return await safe.send(session_id, messages)
+
+    async def send_invocation(
+        self,
+        session_id: str,
+        messages: list[dict[str, Any]],
+        *,
+        binding: Binding,
+        run_id: str,
+        node_run_id: str,
+        attempt_id: str,
+        effect_key: str,
+        invocation_service: GovernedInvocationExecutionService,
+    ) -> dict[str, Any] | Unavailable:
+        """Execute one harness turn through the canonical governed Invocation seam.
+
+        The resolved provider is the already-created :class:`SafeHarnessRunner`
+        for this session, so Warden and the per-session outbound ActionGate remain
+        mandatory. The resolver re-checks slot enablement, provider health, and
+        the Binding constraints that can be proven for an already-created session.
+        """
+
+        safe = self._sessions.get(session_id)
+        if safe is None:
+            return Unavailable(slot=SLOT_NAME, reason=f"unknown harness session: {session_id}")
+        if binding.capability != SLOT_NAME:
+            return Unavailable(
+                slot=binding.capability,
+                reason=f"Binding capability must be {SLOT_NAME!r} for a harness session",
+            )
+        if binding.config or binding.credential_refs:
+            return Unavailable(
+                slot=SLOT_NAME,
+                reason=(
+                    "cached harness session was not created with Binding config/credentials; "
+                    "binding-scoped session creation is required"
+                ),
+            )
+
+        async def resolver(candidate: Binding) -> SafeHarnessRunner | Unavailable:
+            if not self._registry.is_enabled(SLOT_NAME):
+                return Unavailable(slot=SLOT_NAME, reason="harness_runner slot is disabled")
+            if candidate.provider_name and candidate.provider_name != safe.name:
+                return Unavailable(
+                    slot=SLOT_NAME,
+                    reason=(
+                        f"Binding pins provider {candidate.provider_name!r}, "
+                        f"but session uses {safe.name!r}"
+                    ),
+                )
+            health = await safe.healthcheck()
+            if not health.healthy:
+                return Unavailable(slot=SLOT_NAME, reason=health.detail or "provider unhealthy")
+            return safe
+
+        executed = False
+
+        async def executor(provider: SafeHarnessRunner, request: Any) -> dict[str, Any]:
+            nonlocal executed
+            if not isinstance(request, list):
+                raise TypeError("harness Invocation request must be a message list")
+            executed = True
+            try:
+                return await provider.send(session_id, request)
+            except HarnessInputBlocked as exc:
+                # Warden refuses before the foreign harness is called, so the
+                # external effect is proven absent and a later retry is safe.
+                raise EffectNotApplied("Warden blocked harness input before dispatch") from exc
+
+        try:
+            invocation = await invocation_service.invoke(
+                binding=binding,
+                run_id=run_id,
+                node_run_id=node_run_id,
+                attempt_id=attempt_id,
+                effect_key=effect_key,
+                request=messages,
+                resolver=resolver,
+                executor=executor,
+            )
+        except CapabilityUnavailable as exc:
+            return Unavailable(slot=SLOT_NAME, reason=str(exc))
+        result = invocation.result
+        if not isinstance(result, dict):
+            raise TypeError("harness Invocation result must be a response mapping")
+        if not executed and result.get("actions"):
+            # A completed Invocation can be reused for the same logical effect.
+            # Its provider call and ActionGate already ran, so returning the
+            # stored action list would make downstream consumers execute those
+            # actions again without charging/rechecking the current gate.
+            result = {**result, "actions": []}
+        return result
 
     async def stream(self, session_id: str) -> AsyncIterator[dict[str, Any]]:
         safe = self._sessions.get(session_id)
