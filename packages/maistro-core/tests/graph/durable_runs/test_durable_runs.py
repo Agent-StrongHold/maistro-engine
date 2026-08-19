@@ -286,6 +286,46 @@ async def test_run_sync_dag_persists_each_node_to_store(mem_store: DurableRunSto
     assert len(on_disk.node_runs) == 2
 
 
+async def test_ordinary_frontier_visit_bump_is_bridged_between_commits(
+    mem_store: DurableRunStore,
+) -> None:
+    """Regression: a plain sync walk mutates durable state outside any commit.
+
+    Materializing the next frontier's NodeRuns bumps ``visit_counts`` and
+    persists that state before the frontier can advance. The resulting commit's
+    ``prior_state_hash`` therefore cannot equal the previous commit's
+    ``resulting_state_hash``, and without a persisted ``TraversalCheckpoint``
+    bridge every multi-node walk fails ``DurableRunRecord`` validation with
+    "adjacent TraversalCommits must link resulting and prior state hashes".
+
+    No pause, wait, or HITL is involved here - this is the ordinary path.
+    """
+    result = await run_durable_dag(
+        _sync_dag(),
+        store=mem_store,
+        node_resolver=_resolver,
+        inputs={"text": "hello"},
+        user_id="alice",
+        project_id="proj-a",
+    )
+
+    assert result.status == RunStatus.COMPLETED
+    assert len(result.traversal_commits) == 2
+    first, second = result.traversal_commits
+
+    # The n2 frontier bumped visit_counts after the first commit, so the second
+    # commit must bridge that intervening state rather than link to it directly.
+    assert second.prior_state_hash != first.resulting_state_hash
+    assert second.checkpoint_id is not None
+
+    bridge = next(
+        checkpoint
+        for checkpoint in result.traversal_checkpoints
+        if checkpoint.traversal_checkpoint_id == second.checkpoint_id
+    )
+    assert bridge.state_hash == second.prior_state_hash
+
+
 # --- Executor: HITL DAG pauses then resumes -------------------------------
 
 
