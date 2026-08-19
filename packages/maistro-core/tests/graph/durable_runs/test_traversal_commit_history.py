@@ -239,7 +239,7 @@ def test_commit_routing_decision_must_belong_to_commit_source_node_run() -> None
         update={"edge_decision_ids": (edge_decision_id(foreign_decision),)}
     )
 
-    with pytest.raises(ValueError, match="source NodeRun"):
+    with pytest.raises(ValueError, match="authoritative content"):
         DurableRunRecord(
             run=run,
             graph_state=state_with_foreign_decision,
@@ -249,7 +249,7 @@ def test_commit_routing_decision_must_belong_to_commit_source_node_run() -> None
 
 
 def test_commit_graph_snapshot_must_match_run_snapshot() -> None:
-    run, _node_run, _state, commit = _fixture()
+    _run, _node_run, _state, commit = _fixture()
     payload = commit.model_dump(mode="python")
     payload["graph_snapshot_hash"] = "different"
     payload["traversal_commit_id"] = commit.traversal_commit_id

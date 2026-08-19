@@ -10,7 +10,11 @@ from __future__ import annotations
 
 from maistro.graph.definitions import Graph
 from maistro.graph.execution_state import GraphEdgeDecision, GraphExecutionState
-from maistro.graph.traversal_commit import TraversalCommit
+from maistro.graph.traversal_commit import (
+    TraversalCheckpoint,
+    TraversalCommit,
+    graph_state_hash,
+)
 from maistro.runs.lifecycle import transition_node_run
 from maistro.runs.model import (
     AcceptedNodeOutcome,
@@ -124,6 +128,43 @@ def _accepted_outcomes(
     return tuple(outcomes)
 
 
+def _checkpoint_bridge(
+    record: DurableRunRecord,
+    prior_state: GraphExecutionState,
+    completed: tuple[traversal._FrontierItem, ...],
+) -> tuple[TraversalCheckpoint | None, tuple[TraversalCheckpoint, ...]]:
+    """Capture an intervening non-advancing state before the next commit.
+
+    A pause, wait, HITL answer, or recovery checkpoint may legitimately mutate
+    GraphExecutionState without advancing traversal. The next TraversalCommit
+    must hash the exact state it advances from, so materialize that state as a
+    TraversalCheckpoint instead of weakening adjacent commit hash validation.
+    """
+    prior = record.latest_traversal_commit
+    if prior is None or prior.resulting_state_hash == graph_state_hash(prior_state):
+        return None, record.traversal_checkpoints
+
+    prior_hash = graph_state_hash(prior_state)
+    referenced = {
+        commit.checkpoint_id for commit in record.traversal_commits if commit.checkpoint_id
+    }
+    latest = record.latest_traversal_checkpoint
+    if (
+        latest is not None
+        and latest.traversal_checkpoint_id not in referenced
+        and latest.state_hash == prior_hash
+    ):
+        return latest, record.traversal_checkpoints
+
+    checkpoint = TraversalCheckpoint.from_state(
+        graph_snapshot_hash=record.run.graph.content_hash,
+        state=prior_state,
+        ordered_source_node_run_ids=tuple(item.node_run.node_run_id for item in completed),
+        checkpoint_sequence=len(record.traversal_checkpoints) + 1,
+    )
+    return checkpoint, (*record.traversal_checkpoints, checkpoint)
+
+
 async def _checkpoint_advancement(
     record: DurableRunRecord,
     prior_state: GraphExecutionState,
@@ -133,7 +174,7 @@ async def _checkpoint_advancement(
     *,
     store: DurableRunStore,
 ) -> DurableRunRecord:
-    """Persist accepted NodeRuns, resulting traversal state, and commit atomically."""
+    """Persist accepted NodeRuns, traversal state, checkpoint bridge, and commit atomically."""
     metadata = dict(record.graph_state.metadata)
     combined_next = traversal._dedupe(next_ids)
     metadata.pop("pause", None)
@@ -147,6 +188,7 @@ async def _checkpoint_advancement(
         metadata=metadata,
     )
     prior = record.latest_traversal_commit
+    checkpoint, checkpoints = _checkpoint_bridge(record, prior_state, completed)
     commit = TraversalCommit.from_transition(
         graph_snapshot_hash=record.run.graph.content_hash,
         prior_state=prior_state,
@@ -156,11 +198,13 @@ async def _checkpoint_advancement(
         edge_decisions=decisions,
         commit_sequence=len(record.traversal_commits) + 1,
         prior_commit_id=prior.traversal_commit_id if prior is not None else None,
+        checkpoint_id=checkpoint.traversal_checkpoint_id if checkpoint is not None else None,
     )
     return await traversal._checkpoint(
         record,
         store=store,
         graph_state=state,
+        traversal_checkpoints=checkpoints,
         traversal_commits=(*record.traversal_commits, commit),
         resume_at=None,
     )

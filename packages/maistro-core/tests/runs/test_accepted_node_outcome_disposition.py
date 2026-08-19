@@ -38,9 +38,13 @@ async def _execution() -> tuple[InMemoryRunStore, str, AttemptExecutionService]:
     store = InMemoryRunStore(project_store=projects)
     run = await store.create_run(graph)
     node_run = await store.create_node_run(run.run_id, node_id="node-1")
-    return store, node_run.node_run_id, AttemptExecutionService(
-        store=store,
-        runtime=PythonExecutionRuntime(),
+    return (
+        store,
+        node_run.node_run_id,
+        AttemptExecutionService(
+            store=store,
+            runtime=PythonExecutionRuntime(),
+        ),
     )
 
 

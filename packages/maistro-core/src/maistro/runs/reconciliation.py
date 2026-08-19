@@ -22,6 +22,7 @@ from maistro.runs.model import (
     NodeRun,
     Run,
     RunStatus,
+    evidence_values_equal,
 )
 from maistro.runs.store import RunIntegrityError
 
@@ -60,6 +61,20 @@ class AttemptLifecycleStore(Protocol):
     async def get_attempt(self, attempt_id: str) -> Attempt | None: ...
 
 
+def _same_accepted_projection(
+    left: AcceptedNodeOutcome,
+    right: AcceptedNodeOutcome,
+) -> bool:
+    """Compare accepted logical facts while ignoring acceptance wall-clock time."""
+    return (
+        left.node_run_id == right.node_run_id
+        and left.attempt_result == right.attempt_result
+        and left.logical_status is right.logical_status
+        and evidence_values_equal(left.result, right.result)
+        and left.error == right.error
+    )
+
+
 class AttemptLifecycleReconciler:
     """Keep Run/NodeRun activity consistent with canonical physical Attempts."""
 
@@ -87,6 +102,11 @@ class AttemptLifecycleReconciler:
         node_run = await self._require_node_run(attempt.node_run_id)
         if attempt.status is AttemptStatus.COMPLETED:
             physical = AttemptResult.from_attempt(persisted)
+            accepted = node_run.accepted_outcome
+            if accepted is not None:
+                if accepted.attempt_result == physical:
+                    return node_run
+                raise RunIntegrityError("NodeRun already accepted a different AttemptResult")
             outcome = AcceptedNodeOutcome(
                 node_run_id=node_run.node_run_id,
                 attempt_result=physical,
@@ -147,19 +167,19 @@ class AttemptLifecycleReconciler:
         node_run: NodeRun,
         outcome: AcceptedNodeOutcome,
     ) -> NodeRun:
+        accepted = node_run.accepted_outcome
+        if accepted is not None:
+            if _same_accepted_projection(accepted, outcome):
+                return node_run
+            raise RunIntegrityError("NodeRun already has a different accepted outcome")
         if node_run.status is RunStatus.COMPLETED:
-            accepted = node_run.accepted_outcome
-            if accepted is None:
-                return await self._store.transition_node_run(
-                    node_run.node_run_id,
-                    RunStatus.COMPLETED,
-                    result=node_run.result,
-                    error=node_run.error,
-                    accepted_outcome=outcome,
-                )
-            if accepted != outcome:
-                raise RunIntegrityError("NodeRun already has a different accepted outcome")
-            return node_run
+            return await self._store.transition_node_run(
+                node_run.node_run_id,
+                RunStatus.COMPLETED,
+                result=node_run.result,
+                error=node_run.error,
+                accepted_outcome=outcome,
+            )
         if node_run.status is not RunStatus.RUNNING:
             raise RunIntegrityError("completed Attempt requires a running logical NodeRun")
         return await self._store.transition_node_run(

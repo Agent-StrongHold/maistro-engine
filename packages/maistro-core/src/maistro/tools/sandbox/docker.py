@@ -56,7 +56,7 @@ class SandboxContainer:
     async def __aenter__(self) -> SandboxContainer:
         return self
 
-    async def __aexit__(self, *exc_info: object) -> None:
+    async def __aexit__(self, *_: object) -> None:
         await self.destroy()
 
     async def exec(self, command: str, timeout: int = 60) -> tuple[int, str]:

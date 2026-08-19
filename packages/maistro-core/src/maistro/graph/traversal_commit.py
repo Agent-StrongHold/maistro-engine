@@ -40,9 +40,7 @@ def _digest(value: object) -> str:
 def _same_json_value(left: object, right: object) -> bool:
     return json.dumps(
         _json_value(left), sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ) == json.dumps(
-        _json_value(right), sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    )
+    ) == json.dumps(_json_value(right), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 def graph_state_hash(state: GraphExecutionState) -> str:
@@ -439,6 +437,7 @@ if TYPE_CHECKING:
         _ = TraversalCommit.from_transition
         _ = TraversalCheckpoint.from_state
 
+    _: object
     _ = _vulture_traversal_contract_usage
     _ = _base_accepted_outcome_payload
     _ = _json_value
