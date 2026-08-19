@@ -47,14 +47,32 @@ def _validate_graph_links(run: Run, graph_state: GraphExecutionState) -> None:
         raise ValueError("active graph frontier must reference nodes in the Run Graph snapshot")
 
 
+def _validate_checkpoint_record(
+    *,
+    run: Run,
+    checkpoint: TraversalCheckpoint,
+    node_run_ids: set[str],
+    checkpoints_by_id: dict[str, TraversalCheckpoint],
+) -> None:
+    if checkpoint.run_id != run.run_id:
+        raise ValueError("every TraversalCheckpoint must belong to the persisted Run")
+    if checkpoint.graph_snapshot_hash != run.graph.content_hash:
+        raise ValueError("TraversalCheckpoint graph snapshot must match the Run snapshot")
+    if any(
+        node_run_id not in node_run_ids
+        for node_run_id in checkpoint.ordered_source_node_run_ids
+    ):
+        raise ValueError("TraversalCheckpoint source NodeRun must be persisted")
+    if checkpoint.traversal_checkpoint_id in checkpoints_by_id:
+        raise ValueError("TraversalCheckpoint identities must be unique")
+
+
 def _validate_traversal_checkpoints(
     *,
     run: Run,
     node_runs: tuple[NodeRun, ...],
     checkpoints: tuple[TraversalCheckpoint, ...],
 ) -> dict[str, TraversalCheckpoint]:
-    if not checkpoints:
-        return {}
     if [checkpoint.checkpoint_sequence for checkpoint in checkpoints] != list(
         range(1, len(checkpoints) + 1)
     ):
@@ -63,17 +81,12 @@ def _validate_traversal_checkpoints(
     node_run_ids = {node_run.node_run_id for node_run in node_runs}
     checkpoints_by_id: dict[str, TraversalCheckpoint] = {}
     for checkpoint in checkpoints:
-        if checkpoint.run_id != run.run_id:
-            raise ValueError("every TraversalCheckpoint must belong to the persisted Run")
-        if checkpoint.graph_snapshot_hash != run.graph.content_hash:
-            raise ValueError("TraversalCheckpoint graph snapshot must match the Run snapshot")
-        if any(
-            node_run_id not in node_run_ids
-            for node_run_id in checkpoint.ordered_source_node_run_ids
-        ):
-            raise ValueError("TraversalCheckpoint source NodeRun must be persisted")
-        if checkpoint.traversal_checkpoint_id in checkpoints_by_id:
-            raise ValueError("TraversalCheckpoint identities must be unique")
+        _validate_checkpoint_record(
+            run=run,
+            checkpoint=checkpoint,
+            node_run_ids=node_run_ids,
+            checkpoints_by_id=checkpoints_by_id,
+        )
         checkpoints_by_id[checkpoint.traversal_checkpoint_id] = checkpoint
     return checkpoints_by_id
 
