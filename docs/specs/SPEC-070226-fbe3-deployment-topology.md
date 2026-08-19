@@ -114,4 +114,4 @@ chaos/failover tests, alerting wiring) happens at deploy time on real infrastruc
 
 ## References
 
-- [ADR-081: Deployment Topology](../adr/ADR-081-deployment-topology-backup.md)
+- [ADR-081: Deployment Topology](../adr/ADR-081-deployment-backup-dr.md)

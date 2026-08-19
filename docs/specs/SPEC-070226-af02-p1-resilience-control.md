@@ -243,7 +243,7 @@ Events are tagged with `source: "resilience.p1"` for filtering.
 
 ## References
 
-- [ADR-066: P1 Resilience and Control](../adr/ADR-066-p1-resilience-control.md)
+- [ADR-066: P1 Resilience and Control](../adr/ADR-066-p1-resilience-and-control.md)
 - [ADR-038: Reliability Taxonomy](../adr/ADR-038-reliability-taxonomy.md)
 - [ADR-062: Graph Execution Protocol](../adr/ADR-062-graph-execution-protocol.md)
-- [ADR-037: Observability](../adr/ADR-037-observability.md)
+- [ADR-037: Observability](../adr/ADR-037-observability-taxonomy.md)

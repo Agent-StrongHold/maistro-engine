@@ -214,5 +214,5 @@ Config loading: `load_provider_config(path)` parses/validates the YAML above
 
 ## References
 
-- [ADR-079: LLM Provider Registry](../adr/ADR-079-llm-provider-routing.md)
+- [ADR-079: LLM Provider Registry](../adr/ADR-079-model-registry-routing-embeddings.md)
 - [ADR-085: Cost, Quota, Rate Limiting](../adr/ADR-085-cost-quota-rate-limiting.md)

@@ -106,7 +106,10 @@ def opencode_microvm_factory(
     shared_env = dict(env or {})
 
     async def factory(workdir: str) -> SandboxExec:
-        return MicroVMSandbox(launcher, config=config, workspace=workdir, env=shared_env)
+        # trusted_env, not env: these are opencode's provider credentials, wired
+        # in by the operator rather than derived from a harness request, and the
+        # sandbox's allowlist would otherwise (correctly) strip them.
+        return MicroVMSandbox(launcher, config=config, workspace=workdir, trusted_env=shared_env)
 
     return factory
 
