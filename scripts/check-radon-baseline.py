@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Run radon and fail on a new or regressed complexity hotspot.
+"""Run radon and require the reviewed complexity baseline to match exactly.
 
-This is a ratchet, not a blanket suppression: quality/radon-baseline.json
+This is a monotonic ratchet, not a blanket suppression: quality/radon-baseline.json
 records every currently-known C/D/E/F block by qualified name (not by line
-number, so unrelated code motion doesn't trip the gate). CI fails only when
-a block not in the baseline appears at C-or-worse, or when a baselined
-block's complexity score increases beyond its recorded value. The baseline
-shrinks as hotspots are refactored; it is never auto-grown by this script.
+number, so unrelated code motion doesn't trip the gate). CI fails when a block
+is newly C-or-worse, when a baselined block gets more complex, or when a block
+improves/disappears without shrinking the baseline in the same PR. The baseline
+therefore cannot retain slack that a later regression could consume.
 """
 
 from __future__ import annotations
@@ -41,6 +41,18 @@ class Block:
         return f"{self.path}:{self.line} {self.name} -> {self.rank} ({self.complexity})"
 
 
+@dataclass(frozen=True)
+class Comparison:
+    new_findings: list[Block]
+    regressions: list[tuple[Block, int]]
+    improvements: list[tuple[Block, int]]
+    stale: list[str]
+
+    @property
+    def failed(self) -> bool:
+        return bool(self.new_findings or self.regressions or self.improvements or self.stale)
+
+
 def _load_baseline() -> dict[str, Any]:
     return json.loads(BASELINE.read_text(encoding="utf-8"))
 
@@ -73,46 +85,88 @@ def _run_radon(args: list[str]) -> list[Block]:
     return blocks
 
 
-def main(argv: list[str]) -> int:
-    scan_args = argv or ["packages/maistro-core/src"]
-    baseline = {entry["key"]: entry for entry in _load_baseline()["entries"]}
-
-    blocks = _run_radon(scan_args)
-    findings = [block for block in blocks if block.rank not in PASSING_RANKS]
-
+def _compare(findings: list[Block], baseline: dict[str, Any]) -> Comparison:
     new_findings: list[Block] = []
     regressions: list[tuple[Block, int]] = []
+    improvements: list[tuple[Block, int]] = []
+
     for block in findings:
         recorded = baseline.get(block.key)
         if recorded is None:
             new_findings.append(block)
-        elif block.complexity > recorded["complexity"]:
-            regressions.append((block, recorded["complexity"]))
+            continue
+        baseline_complexity = recorded["complexity"]
+        if block.complexity > baseline_complexity:
+            regressions.append((block, baseline_complexity))
+        elif block.complexity < baseline_complexity:
+            improvements.append((block, baseline_complexity))
 
     seen_keys = {block.key for block in findings}
     stale = [key for key in baseline if key not in seen_keys]
+    return Comparison(new_findings, regressions, improvements, stale)
 
+
+def _print_summary(findings: list[Block], baseline: dict[str, Any], result: Comparison) -> None:
     print("radon baseline summary:")
     print(f"  current C/D/E/F blocks: {len(findings)}")
     print(f"  baseline entries: {len(baseline)}")
-    print(f"  new (unbaselined) findings: {len(new_findings)}")
-    print(f"  regressed (more complex than baseline) findings: {len(regressions)}")
-    print(f"  stale baseline entries (no longer found — safe to prune): {len(stale)}")
+    print(f"  new (unbaselined) findings: {len(result.new_findings)}")
+    print(f"  regressed (more complex than baseline) findings: {len(result.regressions)}")
+    print(f"  improved (baseline must shrink) findings: {len(result.improvements)}")
+    print(f"  stale baseline entries (must be pruned): {len(result.stale)}")
 
-    if new_findings:
-        print("\nNew complexity findings with no baseline entry:", file=sys.stderr)
-        for block in new_findings[:50]:
-            print(f"  {block.render()}", file=sys.stderr)
-    if regressions:
-        print("\nComplexity regressions vs. recorded baseline:", file=sys.stderr)
-        for block, baseline_complexity in regressions[:50]:
-            print(f"  {block.render()} (baseline: {baseline_complexity})", file=sys.stderr)
-    if stale:
-        print("\nStale baseline entries no longer found:", file=sys.stderr)
-        for key in stale[:50]:
+
+def _print_block_group(title: str, blocks: list[Block]) -> None:
+    if not blocks:
+        return
+    print(f"\n{title}", file=sys.stderr)
+    for block in blocks[:50]:
+        print(f"  {block.render()}", file=sys.stderr)
+
+
+def _print_delta_group(title: str, deltas: list[tuple[Block, int]], improvement: bool) -> None:
+    if not deltas:
+        return
+    print(f"\n{title}", file=sys.stderr)
+    for block, baseline_complexity in deltas[:50]:
+        suffix = (
+            f"baseline: {baseline_complexity}; lower it to {block.complexity}"
+            if improvement
+            else f"baseline: {baseline_complexity}"
+        )
+        print(f"  {block.render()} ({suffix})", file=sys.stderr)
+
+
+def _print_details(result: Comparison) -> None:
+    _print_block_group("New complexity findings with no baseline entry:", result.new_findings)
+    _print_delta_group(
+        "Complexity regressions vs. recorded baseline:", result.regressions, improvement=False
+    )
+    _print_delta_group(
+        "Complexity improvements not yet ratcheted into the baseline:",
+        result.improvements,
+        improvement=True,
+    )
+    if result.stale:
+        print("\nStale baseline entries that must be removed:", file=sys.stderr)
+        for key in result.stale[:50]:
             print(f"  {key}", file=sys.stderr)
+    if result.improvements or result.stale:
+        print(
+            "\nThe reviewed complexity baseline must shrink in the same PR as the improvement; "
+            "retained slack could otherwise pay for a later regression.",
+            file=sys.stderr,
+        )
 
-    return 1 if new_findings or regressions else 0
+
+def main(argv: list[str]) -> int:
+    scan_args = argv or ["packages/maistro-core/src"]
+    baseline = {entry["key"]: entry for entry in _load_baseline()["entries"]}
+    findings = [block for block in _run_radon(scan_args) if block.rank not in PASSING_RANKS]
+    result = _compare(findings, baseline)
+    _print_summary(findings, baseline, result)
+    _print_details(result)
+    return int(result.failed)
 
 
 if __name__ == "__main__":

@@ -269,7 +269,7 @@
    "name": "_execute_single",
    "classname": "NodeRun",
    "rank": "C",
-   "complexity": 14,
+   "complexity": 11,
    "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
   },
   {
