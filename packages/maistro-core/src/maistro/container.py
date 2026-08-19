@@ -78,6 +78,7 @@ if TYPE_CHECKING:
     from maistro.providers.protocols import LLMProviderRegistry, LLMRouter
     from maistro.resilience.p1 import ResiliencePolicyStore
     from maistro.security._types import AuditLog
+    from maistro.security.sentinel.elevation import ElevationStore
     from maistro.security.sentinel.policy import Sentinel
     from maistro.security.strikes import InMemoryStrikeTracker
     from maistro.skills.import_pipeline import (
@@ -159,6 +160,10 @@ class Container:
     # OAuth (ADR-059): state + identity-link stores; clients via oauth_client().
     oauth_state_store: StateStore = None  # type: ignore[assignment]
     identity_linker: IdentityLinker = None  # type: ignore[assignment]
+    # Elevation grants (SPEC-247 / ADR-068 §D). Held here as well as inside
+    # Sentinel so a future request/confirm surface has somewhere to persist a
+    # cleared grant; Sentinel reads the same instance.
+    elevation_store: ElevationStore = None  # type: ignore[assignment]
     # Strike ladder (SPEC-012 / security/gate.py). None unless
     # config.security.strike_tracking_enabled -- see create_container.
     strike_tracker: InMemoryStrikeTracker | None = None
@@ -425,6 +430,7 @@ async def create_container(
         describe_permission_table,
     )
     from maistro.security.sentinel.audit import InMemoryAuditLog
+    from maistro.security.sentinel.elevation import InMemoryElevationStore
     from maistro.security.sentinel.policy import Sentinel
 
     audit_log = InMemoryAuditLog()
@@ -433,10 +439,18 @@ async def create_container(
         permissions=config.security.permissions,
     )
     logger.info("Sentinel permission table: %s", describe_permission_table(permission_table))
+    # SPEC-247 / ADR-068 §D. Without this, Sentinel._check_elevation_grant is a
+    # permanent no-op, so a grant a human/owner already cleared could never be
+    # honoured. Starts empty, and is only consulted AFTER the capability check,
+    # the budget check and the BLOCKED check have all already passed -- a grant
+    # can therefore never flip authorized False -> True, only needs
+    # "self_elevation"/"scoped_2fa" -> "none".
+    elevation_store = InMemoryElevationStore()
     sentinel = Sentinel(
         warden=warden,
         permission_table=permission_table,
         audit_log=audit_log,
+        elevation_store=elevation_store,
     )
 
     from maistro.capabilities.bootstrap import default_capability_registry
@@ -550,6 +564,7 @@ async def create_container(
         gate=gate,
         strike_tracker=strike_tracker,
         sentinel=sentinel,
+        elevation_store=elevation_store,
         context_builder=context_builder,
         intent_registry=intent_registry,
         capabilities=capabilities,
@@ -749,40 +764,43 @@ def build_node_resolver(
     *,
     harness_adapters: dict[str, HarnessAdapter] | None = None,
     usage_log: InMemoryUsageLog | None = None,
-) -> Callable[[str, dict[str, Any]], Any]:
-    """Build a durable-executor `NodeResolver` (`(node_id, dag) -> Node`) that
-    special-cases node kinds needing wired dependencies, falling back to the
-    plain registry lookup (`get_node(kind)()`) for every other kind.
+) -> Callable[[str, Any], Any]:
+    """Build the production durable-executor node resolver.
 
-    This is the missing link `container.py`'s own `harness_adapters` /
-    `spawn_harness_node` / `usage_log` were wired for but couldn't reach: the
-    only real production `node_resolver` in the codebase
-    (`hive-conductor/backend/services/daily_status_runner.py`) did bare
-    `get_node(kind)()`, so those DI-wired dependencies were unreachable from
-    any real DAG execution. Takes plain optional params (not a `Container`)
-    so it's usable both from `create_container()` (passing the container's
-    own `harness_adapters`/`usage_log`) and standalone from hive-conductor,
-    which imports maistro-core pieces directly rather than constructing a
-    full `Container` -- passing nothing there picks up the same module-level
-    defaults (`_wire_harness_adapters`'s empty-by-default map,
-    `quota.usage_log.get_default_usage_log()`) either way would.
+    Canonical durable execution supplies a ``Graph``. Raw DAG dictionaries
+    remain accepted only as a definition-layer compatibility seam while
+    DagRegistry callers are projected onto canonical Graph at their product
+    boundary. Dependency-injected node kinds and plain registry nodes share
+    the same resolution path in either representation.
     """
+    from maistro.graph.definitions import Graph
     from maistro.graph.nodes import get_node
     from maistro.graph.nodes.rsi_quota_pace_trigger import RsiQuotaPaceTriggerNode
 
     resolved_adapters = harness_adapters if harness_adapters is not None else {}
     resolved_usage_log = usage_log if usage_log is not None else get_default_usage_log()
 
-    def _resolver(node_id: str, dag: dict[str, Any]) -> Any:
-        for n in dag.get("nodes", []):
-            if str(n.get("id")) != node_id:
-                continue
-            kind = str(n.get("kind", ""))
-            if kind == "agent.spawn_harness":
-                return AgentSpawnHarnessNode(adapters=resolved_adapters)
-            if kind == "rsi.quota_pace_trigger":
-                return RsiQuotaPaceTriggerNode(resolved_usage_log)
-            return get_node(kind)()
-        raise KeyError(node_id)
+    def _resolver(node_id: str, graph: Any) -> Any:
+        kind = ""
+        if isinstance(graph, Graph):
+            spec = next((node for node in graph.nodes if node.node_id == node_id), None)
+            if spec is None:
+                raise KeyError(node_id)
+            kind = spec.node_type
+        elif isinstance(graph, dict):
+            for raw in graph.get("nodes", []):
+                if str(raw.get("id")) == node_id:
+                    kind = str(raw.get("kind", ""))
+                    break
+            else:
+                raise KeyError(node_id)
+        else:
+            raise TypeError("node resolver requires canonical Graph or raw DAG snapshot")
+
+        if kind == "agent.spawn_harness":
+            return AgentSpawnHarnessNode(adapters=resolved_adapters)
+        if kind == "rsi.quota_pace_trigger":
+            return RsiQuotaPaceTriggerNode(resolved_usage_log)
+        return get_node(kind)()
 
     return _resolver

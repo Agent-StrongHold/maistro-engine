@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 
 import httpx
 
+from maistro.http import shared_client
 from maistro.quota.rate_profile import LimitUnit
 from maistro.quota.reconciliation import ProviderQuotaSnapshot
 
@@ -57,7 +58,7 @@ class OpenRouterKeyVerifier:
 
     async def verify(self, scope_key: str) -> ProviderQuotaSnapshot:
         headers = {"Authorization": f"Bearer {self._api_key}"}
-        async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+        async with shared_client(timeout=self._timeout, transport=self._transport) as client:
             response = await client.get(f"{self._base_url}/key", headers=headers)
             response.raise_for_status()
             payload = response.json().get("data", {})
@@ -126,7 +127,7 @@ class OpenRouterActivityVerifier:
         misses requests already made today."""
         headers = {"Authorization": f"Bearer {self._management_key}"}
         params = {"date": date} if date else None
-        async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+        async with shared_client(timeout=self._timeout, transport=self._transport) as client:
             response = await client.get(
                 f"{self._base_url}/activity", headers=headers, params=params
             )

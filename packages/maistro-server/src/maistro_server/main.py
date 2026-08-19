@@ -16,6 +16,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from maistro.config.settings import Settings, get_settings
+from maistro.graph.concurrency import configure_graph_concurrency
+from maistro.http import aclose_shared_clients, configure_shared_http
 from maistro.observability.logging import configure_logging
 from maistro.observability.middleware import RequestIDMiddleware
 from maistro.tasks.progress_webhook import ProgressWebhookNotifier
@@ -80,6 +82,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Fail-fast startup validation
     _validate_startup(settings)
 
+    # Explicitly instantiate the graph LLM admission gate during application
+    # startup. Lazy construction remains a safe library fallback, but the server
+    # should own its runtime resource initialization rather than relying on the
+    # first graph node to do it implicitly.
+    configure_graph_concurrency()
+
+    # Size the shared outbound HTTP pool before the first request — clients
+    # already built keep the limits they were created with.
+    configure_shared_http(
+        max_connections=settings.http_max_connections,
+        max_keepalive_connections=settings.http_max_keepalive_connections,
+        keepalive_expiry=settings.http_keepalive_expiry_s,
+    )
+
     # Wire executor via import — the runner no longer imports conductor directly
     from maistro.agents.conductor import run_task
 
@@ -122,6 +138,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await _runner.stop(drain_timeout=SHUTDOWN_DRAIN_TIMEOUT)
 
     await cleanup_all_containers()
+
+    # Release pooled outbound connections. After the runner has drained, so
+    # in-flight tasks still have their client.
+    await aclose_shared_clients()
 
     # Dispose database engine
     from maistro.memory.store import get_engine, reset_engine_cache

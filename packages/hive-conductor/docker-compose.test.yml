@@ -51,6 +51,11 @@ services:
       dockerfile: tests/Dockerfile.playwright
     environment:
       - HIVE_BASE_URL=http://hive:8101
+      # Forwarded from the host, not inherited: compose does not pass the
+      # runner's environment into a container. playwright.config.ts keys its
+      # reduced CI budget off this, and without it the suite runs at local
+      # settings and overruns the job's step timeout. Empty when run locally.
+      - CI=${CI:-}
     depends_on:
       hive:
         condition: service_healthy

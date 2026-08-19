@@ -4,7 +4,24 @@ Per-suite collected **node-ID counts**, for C1 (#286). Node IDs, not static
 `def test_` counts — parametrization expands one `def` into many IDs, so
 counting definitions understates every parametrized suite.
 
-Regenerate with:
+**This table is enforced.** `ci.yml`'s `test` job runs
+[`scripts/check-suite-inventory.py`](../../scripts/check-suite-inventory.py) as
+its last step; it collects every suite below and fails the build if any count
+drifts. When you legitimately add or remove tests, refresh the table and commit
+it with your change:
+
+```bash
+python3 scripts/check-suite-inventory.py            # check (what CI runs)
+python3 scripts/check-suite-inventory.py --update   # rewrite the counts below
+```
+
+The gate compares **counts, not node-ID sets** — a checked-in manifest of ~9,500
+node IDs would churn on every `@parametrize` tweak, and the rename case it would
+catch is already covered by the suites actually *running* in CI. What counts
+catch, and nothing else does, is a suite silently dropping to zero collected.
+Rationale in full in the script's module docstring.
+
+Regenerate a single suite by hand with:
 
 ```bash
 # Everything under the uv workspace:
@@ -21,22 +38,67 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistr
   uv run pytest formal --collect-only -q | tail -3
 ```
 
-## Counts as of `develop` @ F3 (#336)
+## Counts as of current branch
+
+Refreshed after the runtime cleanup queue (#355, #359, #361), the promotion
+CI reconciliation, the Workspace/Persona convergence slice, and Stream 5 parity
+characterization. The convergence work adds 44 maistro-core node IDs covering
+ExecutionRuntime mechanics, Project to Workspace compatibility,
+WorkspaceMembership role semantics, the live Persona model, and
+one-Persona-per-Workspace persistence. Stream 5 adds four maistro-core node IDs.
+Graph routing parity in #402 adds 10 maistro-core node IDs.
+Graph execution-state frontier coverage in #403 adds nine maistro-core node IDs.
+Durable graph canonical-persistence convergence in #416 replaces legacy
+DurableRun/DurableNode lifecycle tests with canonical Run/NodeRun coverage,
+for a net reduction of six maistro-core node IDs while retaining the
+durability, routing, HITL, restart, mutation, and persistence invariants.
+Real durable Graph frontier execution adds six maistro-core node IDs covering
+concurrent fan-out, deterministic NodeRun ordering, source-correlated routing,
+and fan-in input merging.
+Durable Attempt/Runtime-boundary convergence adds nine maistro-core node IDs
+covering Attempt ownership, shared durable persistence, deferred domain
+reconciliation, real frontier execution through Attempt execution IDs,
+cancellation terminalization across Attempt, NodeRun, and Run, and recovery by
+appending a second Attempt under the same logical NodeRun.
+Accepted AttemptResult/NodeRun outcome separation adds nine maistro-core node
+IDs. Durable execution-lease fencing adds five more maistro-core node IDs.
+Authoritative TraversalCommit/TraversalCheckpoint contracts add eleven
+maistro-core node IDs.
+PR #447 adds six maistro-core node IDs covering checkpoint-bridged traversal
+history, reuse of frozen execution state across transitions, and rejection of
+execution continuation after an accepted logical completion.
+Stream 1 adds 99 maistro-core node IDs for the canonical Project,
+Run/NodeRun/Attempt, runtime, persistence, and execution-service contracts.
+Stream 6 adds five provider-parity node IDs.
+Stream 3 authorization/resource-scope coverage adds 19 maistro-core node IDs.
+Stream 7 product-adapter parity adds four maistro-core and two maistro-canvas
+node IDs.
+Stream 2 event, checkpoint, and outbox coverage adds 51 maistro-core node IDs.
+The repo-task wrapper compatibility regression adds one maistro-evolve node ID.
+Reachability production-root coverage adds four root-suite node IDs.
+Mutation scheduler/history coverage adds ten root-suite node IDs.
+Mutation continuation and repository-health aggregation add fifteen root-suite
+node IDs, including checkpoint cache stability, complete-row-only baseline
+aggregation, and single-tool-fingerprint sweep validation.
+Workspace creation was deliberately moved out of the scope-gated parametrized
+Hive cases and into the ordinary product-surface check, so Hive loses one
+collected node ID while retaining the intended assertion. Other suite counts are
+unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 5732 | `ci.yml` |
-| `packages/maistro-evolve/tests` | 528 | `ci.yml` |
+| `packages/maistro-core/tests` | 6201 | `ci.yml` |
+| `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
 | `packages/maistro-turing/tests` | 176 | `ci.yml` |
 | `packages/maistro-design/tests` | 156 | `ci.yml` |
 | `packages/maistro-bootstrap/tests` | 123 | `ci.yml` |
-| `packages/maistro-canvas/tests` | 122 | `ci.yml` |
+| `packages/maistro-canvas/tests` | 124 | `ci.yml` |
 | `packages/maistro-turing/backend/tests` | 26 | `ci.yml` (own invocation) |
-| `tests/` (root) | 599 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
+| `tests/` (root) | 641 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
 | `formal/` | 417 | `formal-conformance.yml` + `quality.yml` Pillar 2 |
-| `packages/hive-conductor/backend/tests` | 1042 | `ci.yml` (bare python) |
+| `packages/hive-conductor/backend/tests` | 1233 | `ci.yml` (bare python) |
 | `packages/hive-conductor/tests/e2e` | 24 | `ci.yml` `hive-conductor-e2e` (docker-compose) |
 
 ## `packages/hive-conductor/tests/e2e` — read before "wiring it in"
@@ -69,10 +131,22 @@ skip states its reason.
 compose job that exists to run it — converting a real test into a green no-op.
 It should error loudly when the stack it needs is absent.
 
-## Known gap against C1's acceptance criterion
+## C1's acceptance criterion — how it is met
 
 C1 asks that "CI-collected node IDs match [this inventory] (± documented
-skips)". This document is the inventory half. **The automated comparison is not
-wired up** — nothing currently fails CI when a suite's collected count drifts
-from the table above. That check is the remaining work on #286; the counts here
-are a hand-regenerated snapshot until it exists.
+skips)". This document is the inventory half; `scripts/check-suite-inventory.py`
+is the comparison half, wired into `ci.yml`'s `test` job (C1/#286). Every row
+above has an entry in that script's `RECIPES` table — a row with no recipe is a
+hard error rather than a silent skip, so adding a suite here cannot look gated
+without being gated.
+
+Two things the gate deliberately does **not** do:
+
+- **It does not compare node-ID sets.** See the rationale at the top.
+- **It does not distinguish skips from passes.** `--collect-only` counts
+  collected node IDs, which is the right denominator for "did this suite stop
+  collecting". Whether a collected test then skips is the runtime suites' and
+  the coverage gate's business (C2/#287), not this one's — the
+  `pytest.importorskip` guards on `packages/hive-conductor/tests/e2e` are
+  exactly why: they keep the directory *collecting* 24 node IDs whether or not
+  `browser_use` is installed, which is the property this gate wants to hold.

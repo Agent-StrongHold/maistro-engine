@@ -21,6 +21,12 @@ CASES = [
     ("delete", "/v1/dags/some-dag", "dags.write"),
     ("post", "/v1/optimizer/some-dag/run", "dags.write"),
     ("post", "/v1/schedules", "schedules.write"),
+    ("post", "/v1/workspaces/persona-templates", "workspaces.write"),
+    ("post", "/v1/workspaces/ws1/members", "workspaces.write"),
+    ("delete", "/v1/workspaces/ws1/members/u1", "workspaces.write"),
+    ("patch", "/v1/workspaces/ws1", "workspaces.write"),
+    ("delete", "/v1/workspaces/ws1", "workspaces.write"),
+    ("put", "/v1/workspaces/ws1/tool-bindings", "workspaces.write"),
     ("put", "/v1/schedules/s1", "schedules.write"),
     ("delete", "/v1/schedules/s1", "schedules.write"),
     ("put", "/v1/credentials/jira", "credentials.write"),
@@ -53,6 +59,7 @@ def test_product_surface_is_not_gated(authed_client):
         ("post", "/v1/memory/entries"),
         ("post", "/v1/chat/sessions"),
         ("put", "/v1/dashboard/layout"),
+        ("post", "/v1/workspaces"),
     ]:
         response = getattr(authed_client, method)(path, json={})
         assert response.status_code != 403, (

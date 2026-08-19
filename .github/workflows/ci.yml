@@ -6,6 +6,20 @@ on:
   pull_request:
     branches: [main, integration, develop]
 
+# Supersede in-flight runs for the same PR instead of letting them pile up.
+# Every push to a PR previously left the prior run's jobs burning runners —
+# including this workflow's own 20-minute `hive-conductor-e2e-ui` — which is
+# what left later jobs sitting `queued` for tens of minutes.
+#
+# Cancellation is scoped to pull_request on purpose: pushes to main/integration/
+# develop must run to completion, because ADR-095's branch model relies on
+# knowing whether a given commit on a protected branch was green. A cancelled
+# run reports neither success nor failure, so cancelling those would erase that
+# record rather than just saving time.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -22,8 +36,6 @@ jobs:
       - run: bash scripts/verify-monorepo-layout.sh
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      # Type-check EVERY package's src (no cherry-picking): a gate that skips
-      # packages lets type errors accumulate unseen in the skipped ones.
       - run: >-
           uv run mypy
           packages/maistro-core/src
@@ -75,12 +87,6 @@ jobs:
         env:
           REQUIRE_AUTH: "false"
           MAISTRO_DRY_RUN: "1"
-      # maistro-turing/backend is a second FastAPI service with its own auth
-      # lanes. It MUST be its own pytest invocation: its conftest imports a
-      # bare `config` module, and hive-conductor's backend/config.py shadows it
-      # whenever the two share a process (ImportError: cannot import name
-      # 'turing_service_key' from 'config'). Same shadowing class the
-      # hive-conductor conftest already works around for `services/`.
       - run: uv run pytest packages/maistro-turing/backend/tests -v --tb=short
         env:
           REQUIRE_AUTH: "false"
@@ -89,23 +95,10 @@ jobs:
         env:
           REQUIRE_AUTH: "false"
           MAISTRO_DRY_RUN: "1"
-      # Root tests/ tree. Only tests/tools/registry/ is excluded — registry.yml
-      # already owns that subtree and runs it with its own --confcutdir.
-      # NOT --ignore=tests/tools: pytest ignores the whole path, which would
-      # leave test_env_sanitize.py, test_sandbox_paths.py and test_workspace.py
-      # (80 sandbox/env-security tests) orphaned from CI — the very defect this
-      # step exists to fix.
       - run: uv run pytest tests/ --ignore=tests/tools/registry -v --tb=short
         env:
           REQUIRE_AUTH: "false"
           MAISTRO_DRY_RUN: "1"
-      # maistro-rsi + maistro-evolve are workspace members (so they DO have
-      # uv.lock entries as of F1/#300) but they are not root dependencies, so
-      # `uv sync` above does not install them into the root env. Put their src
-      # trees on PYTHONPATH — the same pattern the
-      # root CLAUDE.md documents for local runs. Their third-party deps
-      # (httpx, pydantic, structlog, fastmcp via the root env) are already
-      # installed by `uv sync` above.
       - run: uv run pytest packages/maistro-rsi/tests packages/maistro-evolve/tests -v --tb=short
         env:
           REQUIRE_AUTH: "false"
@@ -118,107 +111,55 @@ jobs:
           cache-dependency-path: |
             packages/hive-conductor/frontend/package-lock.json
             packages/maistro-canvas/frontend/package-lock.json
-      # `npm run lint` existed here and no workflow ran it. Only `build` did —
-      # and build is `tsc --noEmit` twice, which type-checks but says nothing
-      # about dead code, swallowed errors or hook misuse. It ran clean over both
-      # empty `catch {}` blocks repaired in this PR.
-      #
-      # Lint runs BEFORE build: it is the faster of the two and the one more
-      # likely to fail, so a red run reports the cheaper failure first.
       - run: npm ci && npm run lint && npm run build
         working-directory: packages/hive-conductor/frontend
-      # The canvas book-maker frontend had no CI at all — no workflow built,
-      # linted or tested it — while `server.js` is a real network service that
-      # proxies operator LLM credentials and shells out to python3. Its vitest
-      # suite (including server/security.test.js) is the only regression net the
-      # C4 hardening has, so it has to actually run somewhere.
-      #
-      # `test:ci` deliberately EXCLUDES tests/renderingPipeline.test.js: 10 of
-      # its 11 tests fail on the current tree for reasons that predate the auth
-      # work (the Azure image-edit fallback chain does not behave as the tests
-      # assert, and two time out at 5s). Those are real but unrelated product
-      # defects in the image pipeline. They are named here so the exclusion is
-      # visible rather than implied by a green check; fixing them should delete
-      # the `test:ci` script and restore plain `npm run test`.
-      #
-      # The script is a DENY-list, not an allow-list, and that matters: an
-      # allow-list of filenames silently drops every test file added later,
-      # which for a step whose entire purpose is "the canvas hardening needs a
-      # regression net" is a gate that decays open without ever going red.
       - run: npm ci && npm run test:ci
         working-directory: packages/maistro-canvas/frontend
-      # `lint` and `build` for canvas, neither of which any workflow ran.
-      #
-      # The missing `build` is not a hygiene gap — it is how a real defect
-      # stayed hidden. `src/lib/api.js` exported `IMAGE_MODELS` twice, which is
-      # invalid ESM. Vite tolerates it so nothing failed, but eslint could not
-      # parse the file at all, leaving the entire API client unlinted; the
-      # `no-undef` that exposed a `ReferenceError` in
-      # `characterNormalizer.js`'s fallback path was invisible behind it.
-      #
-      # `lint` caps react-hooks warnings at the current 13 (see
-      # eslint.config.js): those are real and deferred, and the cap means the
-      # count can shrink but never grow, while every other rule fails outright.
       - run: npm run lint
         working-directory: packages/maistro-canvas/frontend
       - run: npm run build
         working-directory: packages/maistro-canvas/frontend
-      # No JS dependency auditing existed anywhere, while security.yml has run
-      # pip-audit for Python since day one — and `server.js` is a real network
-      # service that proxies operator LLM credentials and shells out to python3.
-      # The tree was carrying 7 advisories (4 high, all in vite); `npm audit
-      # fix` cleared them within the existing semver ranges, so this starts at
-      # zero rather than needing a baseline.
       - run: npm audit --audit-level=high
         working-directory: packages/maistro-canvas/frontend
       - run: uv pip install --system -r packages/hive-conductor/backend/requirements.txt
       - run: python -m pytest packages/hive-conductor/backend/tests -v --tb=short
+      - name: Suite inventory matches collected node IDs (C1/#286)
+        run: python scripts/check-suite-inventory.py
 
-  # packages/hive-conductor/tests/e2e/pm-workflow.spec.ts (Playwright UI
-  # walkthrough: setup wizard -> login -> dashboard -> DAG create/run ->
-  # feedback -> optimizer -> audit log) is already wired into
-  # docker-compose.test.yml's `e2e-tests` service (same live-`hive`-container
-  # harness the API e2e suite uses) but no workflow had ever invoked it (C2/#287).
-  #
-  # continue-on-error: non-blocking for now, matching the v1 plan's own note
-  # that this job "may start non-blocking; blocking by G1". The spec's DAG
-  # mutation steps (tests 05-08) predate the task-scoped permission-elevation
-  # model (middleware/auth.py's _PROTECTED_OPS): they expect `POST /v1/dags` to
-  # return 201, but that route now requires an explicit `dags.write` elevate
-  # call the spec never makes, so it returns 403 — the same auth gap C1/#286
-  # already found and cited for 12 of the API e2e suite's tests. This job
-  # reports that failure (logs/status visible on the PR) without gating merges
-  # until the gap is closed; flip continue-on-error off at G1 once it is.
   hive-conductor-e2e-ui:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Run PM workflow Playwright UI e2e against a live hive-conductor
+        timeout-minutes: 14
         working-directory: packages/hive-conductor
         run: |
           docker compose -f docker-compose.test.yml --profile test up --build \
             --abort-on-container-exit --exit-code-from e2e-tests e2e-tests
-      - name: Dump hive logs on failure
-        if: failure()
+      - name: Diagnose — container state and per-service logs
+        if: always()
         working-directory: packages/hive-conductor
-        run: docker compose -f docker-compose.test.yml logs --tail=200
+        run: |
+          echo "::group::compose ps (did hive ever start and report healthy?)"
+          docker compose -f docker-compose.test.yml ps -a || true
+          echo "::endgroup::"
+          echo "::group::hive service logs"
+          docker compose -f docker-compose.test.yml logs --no-color --tail=300 hive || true
+          echo "::endgroup::"
+          echo "::group::e2e-tests (playwright) logs"
+          docker compose -f docker-compose.test.yml logs --no-color --tail=200 e2e-tests || true
+          echo "::endgroup::"
+          echo "::group::is the app reachable, and what does GET / return?"
+          docker compose -f docker-compose.test.yml run --rm --no-deps -T \
+            --entrypoint sh e2e-tests -c \
+            'wget -S -T 10 -O /dev/null http://hive:8101/ 2>&1 | head -40; echo "exit=$?"' || true
+          echo "::endgroup::"
       - name: Tear down
         if: always()
         working-directory: packages/hive-conductor
         run: docker compose -f docker-compose.test.yml down -v
 
-  # packages/hive-conductor/tests/e2e/test_pm_workflow_api.py (24 tests: setup
-  # wizard -> login -> create/run DAG -> feedback -> optimizer proposal ->
-  # accept -> audit log) needs a LIVE hive-conductor server, not the in-process
-  # TestClient the backend/tests job above uses — it was invisible to every CI
-  # workflow. docker-compose.test.yml already defines the right harness (a
-  # `hive` service with a /health/ready healthcheck, SQLite-backed, no external
-  # DB; an `api-tests` service whose own Dockerfile installs only pytest+httpx
-  # and only ever runs this one file, so the three browser_use-dependent
-  # scripts in the same directory are never at risk of being picked up here) —
-  # this job just invokes it.
   hive-conductor-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -227,34 +168,19 @@ jobs:
       - name: Run PM workflow e2e against a live hive-conductor
         working-directory: packages/hive-conductor
         run: |
-          # Explicit `api-tests` target: with no service argument, `docker
-          # compose up` starts every service under the active profile —
-          # `e2e-tests` shares the same `test` profile and would build/start
-          # the (unwired, large) Playwright image too, wasting time and
-          # risking a race where its stale assertions exit first and trip
-          # --abort-on-container-exit before api-tests finishes. Naming the
-          # target still pulls in `hive` as its declared dependency.
           docker compose -f docker-compose.test.yml --profile test up --build \
             --abort-on-container-exit --exit-code-from api-tests api-tests
-      - name: Dump hive logs on failure
-        if: failure()
+      - name: Dump hive logs
+        if: always()
         working-directory: packages/hive-conductor
-        run: docker compose -f docker-compose.test.yml logs --tail=200
+        run: |
+          docker compose -f docker-compose.test.yml ps -a || true
+          docker compose -f docker-compose.test.yml logs --no-color --tail=200 || true
       - name: Tear down
         if: always()
         working-directory: packages/hive-conductor
         run: docker compose -f docker-compose.test.yml down -v
 
-  # Build every wheel and import it from a throwaway venv that has ONLY the
-  # package's declared dependencies. The other jobs all run inside the root
-  # `uv sync` environment, where a dev extra can supply a library that no package
-  # actually declares — which is how `maistro.identity` shipped an unguarded
-  # `import nacl` while every check stayed green. This job is the control that
-  # closes that gap: it tests what a downstream consumer installs, not what the
-  # repo's own dev environment happens to contain.
-  #
-  # Should be a required status check. See ADR-095 — required checks are
-  # configured in GitHub settings, not in this file.
   wheel-imports:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -263,13 +189,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
-      # A [tool.uv.workspace] members table exists as of F1 (#300), so `uv build
-      # --all-packages` would now work. The explicit loop is kept deliberately:
-      # it builds exactly what is on disk under packages/, so a new package is
-      # enrolled in this gate the moment it grows a pyproject.toml — without
-      # also depending on someone remembering to add it to the members table.
-      # It also excludes the root wheel, which is empty by design.
+      - uses: astral-sh/setup-uv@v7
       - name: Build every package wheel
         run: |
           set -euo pipefail
@@ -281,8 +201,6 @@ jobs:
             echo "::endgroup::"
           done
           ls -1 dist/*.whl
-      # Tier 1: no extras, documented public surface. Tier 2: widest extra,
-      # every module recursively, zero tolerated failures.
       - name: Import wheels from a clean venv
         run: python scripts/verify-wheel-imports.py --dist dist/ --python 3.12
 
@@ -296,12 +214,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - run: uv sync --locked --extra dev
       - run: uv pip install pip-audit
-      # Workspace-local editable packages aren't on PyPI — pip-audit --strict
-      # refuses them, so audit the frozen third-party set only.
       - run: uv pip freeze --exclude-editable > /tmp/deps.txt
-      # `|| true`: pip-audit exits non-zero when it finds anything at all. The
-      # gate script decides what actually blocks, using the one shared triaged
-      # allowlist that security.yml also uses.
       - run: uv run pip-audit --strict --format=json -r /tmp/deps.txt > /tmp/pip-audit.json || true
       - run: python scripts/pip_audit_gate.py /tmp/pip-audit.json
 
@@ -312,20 +225,6 @@ jobs:
       - run: docker build -t maistro-engine:test .
       - run: docker build -f packages/hive-conductor/Dockerfile . -t hive-conductor:ci
 
-  # CI configuration is the only code in this repo that nothing lints, and it
-  # is the code that decides whether everything else ships. actionlint checks
-  # workflow syntax, action versions and `${{ }}` expressions; with shellcheck
-  # it also checks every `run:` block, which is where the non-trivial logic
-  # lives (loops, heredocs, `$GITHUB_OUTPUT` writes).
-  #
-  # Baseline when this landed: zero findings across all ten workflows. That is
-  # the point — it is a guard against future drift, not a cleanup. Worth being
-  # precise about its limits: actionlint models syntax and shell, NOT intent,
-  # so it does not catch a `paths:` filter that fails to match the files it
-  # should. Two such trigger defects were found by hand the same week.
-  #
-  # Pinned tarball rather than a third-party action, matching how this repo
-  # already installs `age`: one fewer action with write access to the runner.
   workflow-lint:
     runs-on: ubuntu-latest
     env:

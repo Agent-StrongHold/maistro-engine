@@ -357,6 +357,8 @@ app.post("/api/export", async (req, res) => {
   activeExports += 1;
   let released = false;
   let tmpDir;
+  let childProcess = null;
+  let streamStarted = false;
 
   const release = () => {
     if (released) return;
@@ -365,22 +367,26 @@ app.post("/api/export", async (req, res) => {
     if (tmpDir) rmdir(tmpDir, { recursive: true }).catch(() => {});
   };
 
-  // Registered BEFORE the first await, and that ordering is the whole point.
-  // The render below takes as long as a PDF takes; if the client disconnects
-  // during it, `res` emits 'close' while we are still suspended. Attaching the
-  // listener afterwards means that event has already fired and nothing ever
-  // decrements the counter — two aborted exports would wedge this endpoint at
-  // 503 until the process restarted, which is exactly the denial the cap exists
-  // to prevent. 'close' also fires on normal completion; `release` is
-  // idempotent, so the double-notify is harmless.
-  res.on("close", release);
+  // A disconnected client must not free the slot while its renderer is still
+  // consuming CPU/memory. Kill the active renderer, but let execFile's exit
+  // callback/catch path release the slot only after the process is actually
+  // reaped. If rendering has already finished, either the file stream owns the
+  // remaining lifetime or there is nothing left to hold.
+  res.on("close", () => {
+    if (childProcess && childProcess.exitCode === null && !childProcess.killed) {
+      childProcess.kill("SIGKILL");
+      return;
+    }
+    if (!streamStarted) release();
+  });
 
   try {
     tmpDir = await mkdtemp(join(tmpdir(), "canvas-export-"));
     const payload = JSON.stringify({ mode: mode || "interior", title, author, product_id, pages, front_cover, back_cover, output_dir: tmpDir });
 
     await new Promise((resolve, reject) => {
-      const proc = execFile("python3", [EXPORT_SCRIPT], { maxBuffer: 100 * 1024 * 1024 }, (err, stdout, stderr) => {
+      childProcess = execFile("python3", [EXPORT_SCRIPT], { maxBuffer: 100 * 1024 * 1024 }, (err, stdout, stderr) => {
+        childProcess = null;
         if (err) return reject(stderr || err.message);
         try {
           const result = JSON.parse(stdout.trim());
@@ -388,9 +394,17 @@ app.post("/api/export", async (req, res) => {
           resolve(result.path);
         } catch (e) { reject(e.message); }
       });
-      proc.stdin.write(payload);
-      proc.stdin.end();
+      childProcess.stdin.write(payload);
+      childProcess.stdin.end();
     });
+
+    // The response may have disappeared just as the child exited. There is no
+    // stream to own cleanup in that case, so release now and do not touch the
+    // destroyed socket.
+    if (res.destroyed && !res.writableEnded) {
+      release();
+      return;
+    }
 
     const pdfName = mode === "cover" ? "cover.pdf" : "interior.pdf";
     const pdfPath = join(tmpDir, pdfName);
@@ -402,17 +416,18 @@ app.post("/api/export", async (req, res) => {
 
     const { createReadStream } = await import("fs");
     const stream = createReadStream(pdfPath);
-    // The slot is held until the response finishes streaming, not until the
-    // handler returns — the python process is done by then but the file is
-    // still being read, and releasing early would let the cap be exceeded.
-    // 'close' (not 'end') so a stream torn down mid-pipe still releases.
+    streamStarted = true;
+    // Once rendering is complete, the response stream owns the slot/tempdir.
+    // 'close' covers both normal completion and a torn-down pipe.
     stream.on("close", release);
     stream.on("error", release);
     stream.pipe(res);
   } catch (e) {
     release();
     console.error("Export error:", e);
-    res.status(500).json({ error: typeof e === "string" ? e : e.message });
+    if (!res.headersSent && !res.destroyed) {
+      res.status(500).json({ error: typeof e === "string" ? e : e.message });
+    }
   }
 });
 

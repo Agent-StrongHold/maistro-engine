@@ -88,7 +88,9 @@ class ProjectSettings(BaseModel):
     monthly_budget_usd: float = Field(
         default=100.0,
         ge=0.0,
-        description="Project-level $ cap; optimizer halts non-critical runs at 100%",
+        description="Project-level $ cap; intended to halt non-critical runs at 100%. "
+        "NOT YET ENFORCED: no spend ledger consults it, so the cap does not "
+        "bound anything today.",
     )
     edit_lock_days: int = Field(
         default=30,
@@ -181,8 +183,10 @@ class Project(BaseModel):
             "Skill IDs (from maistro.skills.registry) available inside this "
             "project's DAGs. Per-project allowlist — a PM project might "
             "enable 'jira_search', 'web_research'; an art project enables "
-            "'image_describe', 'color_palette_pick'. Skills not in this list "
-            "are blocked even if registered globally."
+            "'image_describe', 'color_palette_pick'. NOT YET ENFORCED: "
+            "Project never reaches the graph executor, so nothing consults "
+            "this list and every registered skill is reachable. Do not treat "
+            "it as a security boundary until skill dispatch reads it."
         ),
     )
     enabled_mcp_servers: list[str] = Field(
@@ -190,8 +194,11 @@ class Project(BaseModel):
         description=(
             "MCP server IDs this project's DAGs may invoke (from the "
             "platform MCP catalog: 'mcp-atlassian-server', "
-            "'mcp-atlassian-rovo', 'mcp-filesystem-local', etc.). Empty list "
-            "= no outbound MCP calls allowed; explicit allowlist required."
+            "'mcp-atlassian-rovo', 'mcp-filesystem-local', etc.). Intended "
+            "semantics: empty list = no outbound MCP calls allowed, explicit "
+            "allowlist required. NOT YET ENFORCED: nothing reads this field, "
+            "so the default empty list currently denies nothing. Do not treat "
+            "it as a security boundary until MCP dispatch reads it."
         ),
     )
     dashboard_ids: list[str] = Field(

@@ -3,12 +3,62 @@
 from __future__ import annotations
 
 import functools
+import logging
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from maistro.quota.rate_profile import LimitUnit, LimitWindow
+
+logger = logging.getLogger(__name__)
+
+
+def validate_cors_origins(origins: list[str]) -> list[str]:
+    """Reject CORS origins that would defeat the browser's same-origin policy.
+
+    Lives here rather than in ``config.loader`` because the loader is only one
+    of two config paths, and not the one the servers read. Both paths call
+    this so the guard cannot again end up on the door nobody uses.
+
+    ``"*"`` is refused outright: every app pairs its origin list with
+    ``allow_credentials=True``, and Starlette responds to a wildcard-plus-
+    credentials config by echoing the request's ``Origin`` header back with
+    ``Access-Control-Allow-Credentials: true`` — which lets any site on the
+    internet make credentialed cross-origin requests.
+    """
+    cleaned: list[str] = []
+    for raw in origins:
+        origin = raw.strip()
+        if not origin:
+            continue
+        if origin == "*":
+            msg = (
+                "CORS origins must not contain '*' — use exact origins. "
+                "The apps send allow_credentials=True, so a wildcard makes every "
+                "site a permitted credentialed origin."
+            )
+            raise ValueError(msg)
+        if origin.lower() == "null":
+            # Browsers serialize *opaque* origins as the literal string
+            # "null": sandboxed iframes, file: pages, data: documents, and
+            # some redirect chains all send `Origin: null`. Allowing it with
+            # credentials grants every one of them credentialed access, and
+            # they are mutually indistinguishable — there is no such thing as
+            # trusting one opaque origin.
+            msg = (
+                "CORS origins must not contain 'null' — every sandboxed frame, "
+                "file: page and data: document shares that origin, so allowing "
+                "it grants them all credentialed access."
+            )
+            raise ValueError(msg)
+        if origin.startswith("javascript:") or origin.startswith("data:"):
+            msg = f"CORS origins contains unsafe origin: {origin!r}"
+            raise ValueError(msg)
+        if not origin.startswith("https://") and not origin.startswith("http://localhost"):
+            logger.warning("CORS origin %r is not HTTPS — use HTTPS in production", origin)
+        cleaned.append(origin)
+    return cleaned
 
 
 class RateConstraintConfig(BaseModel):
@@ -45,6 +95,12 @@ class DatabaseSettings(BaseSettings):
     pool_size: int = 5
     max_overflow: int = 10
     pool_recycle: int = 1800
+
+    # asyncpg pool bounds, applied by `persistence.get_pool`. Distinct from
+    # pool_size/max_overflow above, which are SQLAlchemy-shaped and unused by
+    # the asyncpg path.
+    asyncpg_min_size: int = 2
+    asyncpg_max_size: int = 50
 
     @property
     def url(self) -> str:
@@ -139,8 +195,12 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = Field(
         default_factory=lambda: ["http://localhost:3080"],
-        description="Allowed CORS origins",
+        description="Allowed CORS origins. This is the field the FastAPI apps "
+        "actually pass to CORSMiddleware — validated here, at the boundary "
+        "that is read.",
     )
+
+    _check_cors_origins = field_validator("cors_origins")(validate_cors_origins)
 
     default_model: str = "anthropic/claude-sonnet-4-20250514"
 
@@ -168,6 +228,13 @@ class Settings(BaseSettings):
 
     rate_limit_per_minute: int = 60
     rate_limit_burst: int = 10
+
+    # Shared outbound HTTP pool (see maistro.http). Ceilings against fd
+    # exhaustion, NOT a load throttle — a small cap here was measured as the
+    # worst option for interactive latency (chat p50 24.14s vs 2.03s).
+    http_max_connections: int = 100
+    http_max_keepalive_connections: int = 50
+    http_keepalive_expiry_s: float = 30.0
 
     task_progress_webhook_url: str = Field(
         default="",
@@ -224,6 +291,28 @@ class SecurityConfig(BaseModel):
     sentinel_enabled: bool = True
     gate_query_improve: bool = True
     gate_model: str = "auto"
+
+    @field_validator("warden_enabled", "sentinel_enabled")
+    @classmethod
+    def _refuse_to_pretend_to_disable(cls, value: bool, info: Any) -> bool:
+        """These read as off-switches but nothing consults them.
+
+        Leaving that silent is the dangerous direction: an operator sets
+        ``warden_enabled: false``, sees no error, and reasonably concludes
+        scanning is off — while every trust boundary is still scanning. The
+        opposite mistake is worse still, if someone later wires the field up
+        as a real disable path. Refusing the weakening value keeps the config
+        honest until the knob is actually implemented.
+        """
+        if not value:
+            msg = (
+                f"{info.field_name}=false is not implemented — nothing reads this field, "
+                "and the subsystem stays on regardless. Remove the setting rather than "
+                "relying on it to turn protection off."
+            )
+            raise ValueError(msg)
+        return value
+
     # NOTE: permission_preset / permissions / strike_tracking_enabled are
     # deliberately NOT mirrored here. They live on maistro.types.config
     # SecurityConfig, which is what create_container actually receives.

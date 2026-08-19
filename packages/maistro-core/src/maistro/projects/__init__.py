@@ -1,23 +1,13 @@
-"""Project model — per-user (or team-shared) workspaces.
+"""Project package during convergence from legacy ownership to canonical scope.
 
-A user has many DOMAINS (PM, Art, Engineering, Product, custom) and each
-domain can hold one or many PROJECTS. A project IS a hyperagent meta-DAG:
-its own integrations, dashboards, sub-agent DAGs, skills, and settings —
-all scoped per-meta-DAG.
+Project is canonical beneath Workspace as a nested organization, configuration,
+authorization, and resource scope. The canonical model and stores live in
+:mod:`maistro.projects.scope`, :mod:`maistro.projects.scope_store`, and
+:mod:`maistro.projects.sqlite_scope_store`.
 
-PM Fleet is the first user of the substrate. Other domains (canvas_creative,
-engineering_rfc) are token seats at v0.2: they prove the substrate is
-domain-neutral but ship with minimal default DAGs + no dedicated UI yet.
-
-Public surface:
-  Types          — Project, ProjectMember, ProjectMemberRole,
-                   ProjectSettings, JiraResourceBinding,
-                   AirtableResourceBinding, RepoResourceBinding.
-  Exceptions     — ProjectNotFound, ProjectAccessDenied,
-                   ProjectQuotaExceeded.
-  Stores         — ProjectStore Protocol + InMemoryProjectStore reference.
-  Domains        — KNOWN_DOMAINS (curated set), DomainConfig, domain_for(),
-                   domain_use_cases().
+The exports in this module are the older ownership-root Project API. They remain
+reachable during caller migration and must not be mistaken for the canonical
+Project scope model or used as a new Workspace alias.
 """
 
 from __future__ import annotations

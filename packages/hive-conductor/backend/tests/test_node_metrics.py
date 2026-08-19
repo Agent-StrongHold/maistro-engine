@@ -8,7 +8,7 @@ the observation list. Covers:
   - _filter respects node_kind / project_id / node_id / dag_id
   - aggregate stats: count, p50/p95/p99, success_rate, tokens, cost
   - empty result returns the zeroed shape (not 404)
-  - record_run_completion ingests every node_record correctly
+  - record_run_completion ingests every canonical NodeRun correctly
   - record_run_completion(None) is a no-op (defensive)
   - Phase enum coerced to "COMPLETED" / "FAILED" / etc.
   - GET /v1/dag-metrics returns the aggregate with default window
@@ -33,25 +33,68 @@ if str(_BACKEND) not in sys.path:
 
 
 @dataclass
-class _FakeNodeRec:
-    """Duck-typed stand-in for DurableNodeRecord."""
-
+class _FakeGraphNode:
     node_id: str
-    kind: str = ""
-    phase: str = "COMPLETED"
-    latency_ms: int = 0
-    tokens_in: int = 0
-    tokens_out: int = 0
-    cost_usd: float = 0.0
-    model_used: str = ""
+    node_type: str
+
+
+@dataclass
+class _FakeGraph:
+    graph_id: str
+    nodes: list[_FakeGraphNode]
+
+
+@dataclass
+class _FakeGraphSnapshot:
+    graph: _FakeGraph
+
+    def materialize(self) -> _FakeGraph:
+        return self.graph
 
 
 @dataclass
 class _FakeRun:
-    run_id: str = "r1"
-    dag_id: str = "daily-status"
-    project_id: str = "proj-A"
-    node_records: list[Any] = field(default_factory=list)
+    run_id: str
+    project_id: str
+    graph: _FakeGraphSnapshot
+
+
+@dataclass
+class _FakeNodeRun:
+    node_id: str
+    status: Any = "completed"
+    latency_ms: int = 0
+    started_at: datetime = field(init=False)
+    finished_at: datetime = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.started_at = datetime(2026, 5, 22, 12, 0, 0, tzinfo=UTC)
+        self.finished_at = self.started_at + timedelta(milliseconds=self.latency_ms)
+
+
+@dataclass
+class _FakeRecord:
+    run: _FakeRun
+    node_runs: list[_FakeNodeRun] = field(default_factory=list)
+
+
+def _fake_record(
+    *,
+    run_id: str = "r1",
+    dag_id: str = "daily-status",
+    project_id: str = "proj-A",
+    nodes: list[tuple[_FakeNodeRun, str]],
+) -> _FakeRecord:
+    graph = _FakeGraph(
+        graph_id=dag_id,
+        nodes=[_FakeGraphNode(node.node_id, kind) for node, kind in nodes],
+    )
+    run = _FakeRun(
+        run_id=run_id,
+        project_id=project_id,
+        graph=_FakeGraphSnapshot(graph),
+    )
+    return _FakeRecord(run=run, node_runs=[node for node, _kind in nodes])
 
 
 @pytest.fixture()
@@ -377,14 +420,14 @@ def test_observation_dict_has_isoformat_timestamp(isolated_store: Any) -> None:
 def test_record_run_completion_ingests_every_node(isolated_store: Any) -> None:
     from services.node_metrics_store import record_run_completion
 
-    run = _FakeRun(
+    run = _fake_record(
         run_id="r-001",
         dag_id="daily-status",
         project_id="proj-X",
-        node_records=[
-            _FakeNodeRec("n1", "jira.poll", "COMPLETED", 150, 5, 12),
-            _FakeNodeRec("n2", "transform.alias", "COMPLETED", 5, 0, 0),
-            _FakeNodeRec("n3", "dashboard.append", "FAILED", 80, 0, 0),
+        nodes=[
+            (_FakeNodeRun("n1", "completed", 150), "jira.poll"),
+            (_FakeNodeRun("n2", "completed", 5), "transform.alias"),
+            (_FakeNodeRun("n3", "failed", 80), "dashboard.append"),
         ],
     )
     n = record_run_completion(run)
@@ -394,8 +437,9 @@ def test_record_run_completion_ingests_every_node(isolated_store: Any) -> None:
     by_id = {it["node_id"]: it for it in items}
     assert by_id["n1"]["node_kind"] == "jira.poll"
     assert by_id["n1"]["latency_ms"] == 150
-    assert by_id["n1"]["tokens_in"] == 5
-    assert by_id["n1"]["tokens_out"] == 12
+    # Invocation/resource metrics move onto Attempt in the next spine slice.
+    assert by_id["n1"]["tokens_in"] == 0
+    assert by_id["n1"]["tokens_out"] == 0
     assert by_id["n3"]["phase"] == "FAILED"
 
 
@@ -414,27 +458,24 @@ def test_record_run_completion_handles_missing_fields(isolated_store: Any) -> No
         pass
 
     e = _Empty()
-    # No node_records attr; should not raise
+    # No canonical run envelope; should not raise
     assert record_run_completion(e) == 0
 
 
-def test_record_run_completion_phase_enum_coerced() -> None:
-    """phase coming in as 'NodePhase.COMPLETED' (string repr of StrEnum)
-    must normalize to bare 'COMPLETED' for the aggregator's match."""
+def test_record_run_completion_canonical_status_coerced() -> None:
+    """Canonical RunStatus values normalize to the metrics phase vocabulary."""
     from services.node_metrics_store import (
         NodeMetricsStore,
         record_run_completion,
         set_store,
     )
 
+    from maistro.runs.model import RunStatus
+
     store = NodeMetricsStore()
     set_store(store)
     try:
-        run = _FakeRun(
-            node_records=[
-                _FakeNodeRec("n1", "x", "NodePhase.COMPLETED", 100, 0, 0),
-            ]
-        )
+        run = _fake_record(nodes=[(_FakeNodeRun("n1", RunStatus.COMPLETED, 100), "x")])
         record_run_completion(run)
         agg = store.aggregate(window_seconds=3600)
         assert agg["succeeded"] == 1

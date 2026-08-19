@@ -9,6 +9,7 @@ from typing import Any
 
 import structlog
 
+import maistro.graph.conditions as graph_conditions
 from maistro.graph.events import (
     GraphEvent,
     cycle_started,
@@ -40,6 +41,7 @@ from maistro.graph.types import (
 from maistro.resilience.backoff import BackoffConfig
 
 logger = structlog.get_logger()
+_MISSING = graph_conditions.MISSING
 
 
 def _get_temperature(
@@ -50,11 +52,6 @@ def _get_temperature(
     if node_config and node_config.temperature is not None:
         return node_config.temperature
     return default
-
-
-_OPERATORS = [" is not ", " is ", " >= ", " <= ", " != ", " == ", " > ", " < "]
-
-_MISSING = object()
 
 
 def _resolve_path(
@@ -73,42 +70,14 @@ def _resolve_path(
     return getattr(obj, attr, _MISSING)
 
 
-def _parse_rhs(s: str) -> object:
-    if s == "True":
-        return True
-    if s == "False":
-        return False
-    if s == "None":
-        return None
-    try:
-        return float(s) if "." in s else int(s)
-    except ValueError:
-        return s.strip("\"'")
+def _parse_rhs(value: str) -> object:
+    """Compatibility wrapper for the shared graph predicate literal parser."""
+    return graph_conditions.parse_condition_rhs(value)
 
 
-def _compare(lhs: object, op: str, rhs: object) -> bool:
-    stripped = op.strip()
-    if stripped in ("is", "=="):
-        return lhs == rhs
-    if stripped in ("is not", "!="):
-        return lhs != rhs
-    # Ordering comparisons are dynamic: operands come from a runtime-parsed
-    # condition string and may be any comparable type. Mismatched types raise
-    # TypeError, which we treat as "condition not satisfied".
-    a: Any = lhs
-    b: Any = rhs
-    try:
-        if stripped == "<":
-            return bool(a < b)
-        if stripped == ">":
-            return bool(a > b)
-        if stripped == "<=":
-            return bool(a <= b)
-        if stripped == ">=":
-            return bool(a >= b)
-    except TypeError:
-        return False
-    return False
+def _compare(lhs: object, operator: str, rhs: object) -> bool:
+    """Compatibility wrapper for the shared graph predicate comparator."""
+    return graph_conditions.compare_condition_values(lhs, operator, rhs)
 
 
 def evaluate_condition(
@@ -117,14 +86,10 @@ def evaluate_condition(
     code: CodeOutput | None,
     review: ReviewOutput | None,
 ) -> bool:
-    for op in _OPERATORS:
-        if op in condition:
-            lhs_str, rhs_str = condition.split(op, 1)
-            lhs = _resolve_path(lhs_str.strip(), plan, code, review)
-            if lhs is _MISSING:
-                return False
-            return _compare(lhs, op, _parse_rhs(rhs_str.strip()))
-    return False
+    return graph_conditions.evaluate_predicate(
+        condition,
+        lambda path: _resolve_path(path, plan, code, review),
+    )
 
 
 def _role_str(role: AgentRole | str) -> str:
