@@ -26,6 +26,25 @@ owners:
 
 # SPEC-070626-5341: Internal trust root — CA derivation, X.509 leaf minting, 90-day rotation
 
+> **Unresolved on migration.** This document was written on a stale branch and is
+> migrated at `Proposed` to preserve design intent; it has not been reconciled
+> against the ADR it claims to implement. Automated review (#457) raised the
+> following, and the first was verified against the ADR text:
+>
+> - **Diverges from ADR-026 while declaring `implements: ADR-026`.** ADR-026
+>   derives the root as `HKDF(seed, info=instance_name)` producing a **P-256**
+>   key, chosen because "P-256 — universally supported in X.509 / TLS / OS trust
+>   stores" and deliberately "independent of BIP32 paths". This spec instead uses
+>   a single constant BIP32 Ed25519 path, which drops instance scoping (one seed
+>   provisioning several conductors would share one CA key) and the X.509/TLS
+>   compatibility the ADR selected P-256 for. Reconcile the spec or amend the ADR
+>   before implementing either.
+> - Default name constraints (`.local`, `.internal`) are broader than ADR-026's
+>   restriction to the conductor's own hostnames.
+> - `mint_leaf` returns only a certificate, with no leaf key or CSR input.
+> - A deterministic certificate with a fixed validity window has no defined
+>   renewal or trust-store rollover path.
+
 ## Context
 
 Internal services (maistro-server, hive-conductor backend, agent-to-agent HTTP, foreign
@@ -171,4 +190,4 @@ the seed itself.
 - [ADR-026: Internal Trust Root](../adr/ADR-026-internal-trust-root.md)
 - [ADR-021: Conductor Seed](../adr/ADR-021-conductor-seed.md)
 - `packages/maistro-core/src/maistro/identity/__init__.py` (`ConductorSeed`, `_PATHS`)
-- [ADR-077: Web and Session Security](../adr/ADR-077-web-and-session-security.md)
+- [ADR-077: Web and Session Security](../adr/ADR-077-web-session-security.md)

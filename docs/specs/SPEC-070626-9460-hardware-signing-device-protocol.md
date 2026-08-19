@@ -25,6 +25,19 @@ owners:
 
 # SPEC-070626-9460: Hardware signing device protocol and simulated device
 
+> **Unresolved on migration.** Migrated at `Proposed` to preserve design intent,
+> not reconciled against ADR-022. Automated review (#457) raised, and this was
+> verified against the ADR text:
+>
+> - **Software fallback contradicts ADR-022's fail-closed requirement.**
+>   ADR-022 states "Hardware unplugged: conductor enters degraded mode (no
+>   signing) rather than crashing". This spec's mode ladder falls back to a
+>   retained software seed after a disconnect, which defeats the boundary an
+>   operator chose a hardware-backed mode to get. Remove the fallback or amend
+>   the ADR.
+> - `SignatureResult` records `mode_used` but no device/key identity, so two
+>   devices of the same vendor are indistinguishable in an audit record.
+
 ## Context
 
 ADR-022 specifies a signing-mode ladder — hardware devices (Ledger, Trezor, YubiKey, mobile)

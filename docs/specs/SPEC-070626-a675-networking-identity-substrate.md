@@ -191,7 +191,7 @@ def build_registry(config: SubstrateConfig) -> SubstrateRegistry: ...
 
 ## References
 
-- [ADR-029: Networking & Identity Substrate](../adr/ADR-029-networking-identity-substrate.md)
+- [ADR-029: Networking & Identity Substrate](../adr/ADR-029-networking-substrate.md)
 - [ADR-024: Agent Identity & Verifiable Credentials](../adr/ADR-024-agent-identity-did-vc.md)
 - [SPEC-070626-4ec8: VC/DIDDocument types](SPEC-070626-4ec8-identity-vc-did-document.md)
 - [SPEC-016: Tailscale-native connectivity](SPEC-016-tailscale-native.md)

@@ -27,6 +27,21 @@ owners:
 
 # SPEC-070626-7912: Agent crypto operations — SpendingPolicy and TransactionIntent (testnet-only)
 
+> **Unresolved on migration.** Migrated at `Proposed` to preserve design intent,
+> not reconciled against ADR-023. Automated review (#457) raised, and this was
+> verified against the ADR text:
+>
+> - **`key_class` is taken from the agent-authored intent.** ADR-023 makes
+>   hot/cold a property of the derivation path (`m/44'/<chain>'/0' = COLD —
+>   admin signature required for every tx`), so a caller-supplied class lets an
+>   agent self-declare `cold` and route around the hot-key cap. Classification
+>   must come from trusted wallet state.
+> - The daily cap is evaluated against a caller-supplied snapshot with no atomic
+>   reservation, so concurrent intents can both pass and exceed it.
+> - Non-positive `amount_sats` passes every documented upper-bound check.
+> - `ApproverGraph.resolve()` maps scopes but never returns an approve/deny
+>   outcome, so the documented denial path has no operation that can produce it.
+
 ## Context
 
 ADR-023 specifies how agents propose, gate, and (if approved) execute value-moving operations
