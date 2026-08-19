@@ -33,7 +33,14 @@ def test_baseline_matches_the_tree(check):
     """The committed baseline is the current truth — otherwise the first CI run
     after any merge fails for reasons unrelated to that merge."""
     unreachable, _ = check.unreachable_modules()
-    assert sorted(json.loads(BASELINE.read_text())["unreachable"]) == unreachable
+    baseline = sorted(json.loads(BASELINE.read_text())["unreachable"])
+    stale = sorted(set(baseline) - set(unreachable))
+    added = sorted(set(unreachable) - set(baseline))
+    if stale:
+        print(f"::error title=Reachability baseline stale::{','.join(stale)}")
+    if added:
+        print(f"::error title=New unreachable modules::{','.join(added)}")
+    assert baseline == unreachable
 
 
 def test_entry_points_are_reachable(check):
@@ -74,13 +81,22 @@ def test_new_unreachable_module_fails_the_gate(check, tmp_path, monkeypatch, cap
     assert unreachable[0] in capsys.readouterr().out
 
 
-def test_module_becoming_reachable_is_reported_but_passes(check, tmp_path, monkeypatch, capsys):
-    """Shrinking the unreachable set must never fail the build — that would make
-    wiring something up feel like breaking CI."""
+def test_module_becoming_reachable_fails_until_the_baseline_is_pruned(
+    check, tmp_path, monkeypatch, capsys
+):
+    """Wiring a module up is good news, and it still has to be banked.
+
+    The baseline is a record of what is *currently* unreachable, so an entry
+    that is no longer true is retained slack: it would silently absorb a later
+    module going unreachable, and the gate would say nothing. Failing here
+    costs one line — delete the stale entry — and the message says which.
+    """
     unreachable, _ = check.unreachable_modules()
     grown = tmp_path / "baseline.json"
     grown.write_text(json.dumps({"unreachable": [*unreachable, "maistro.nonexistent_module"]}))
     monkeypatch.setattr(check, "BASELINE", grown)
 
-    assert check.main() == 0
-    assert "maistro.nonexistent_module" in capsys.readouterr().out
+    assert check.main() == 1
+    out = capsys.readouterr().out
+    assert "maistro.nonexistent_module" in out
+    assert "must shrink" in out

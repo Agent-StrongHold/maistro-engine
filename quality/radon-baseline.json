@@ -173,16 +173,6 @@
    "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
   },
   {
-   "key": "packages/maistro-core/src/maistro/config/loader.py::_apply_cors_and_limits",
-   "path": "packages/maistro-core/src/maistro/config/loader.py",
-   "line": 101,
-   "name": "_apply_cors_and_limits",
-   "classname": null,
-   "rank": "C",
-   "complexity": 12,
-   "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
-  },
-  {
    "key": "packages/maistro-core/src/maistro/credentials/pool.py::CredentialPool.get_stats",
    "path": "packages/maistro-core/src/maistro/credentials/pool.py",
    "line": 151,
@@ -263,16 +253,6 @@
    "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
   },
   {
-   "key": "packages/maistro-core/src/maistro/graph/durable_runs/executor.py::_next_node",
-   "path": "packages/maistro-core/src/maistro/graph/durable_runs/executor.py",
-   "line": 231,
-   "name": "_next_node",
-   "classname": null,
-   "rank": "C",
-   "complexity": 12,
-   "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
-  },
-  {
    "key": "packages/maistro-core/src/maistro/graph/node.py::NodeRun._execute_beam",
    "path": "packages/maistro-core/src/maistro/graph/node.py",
    "line": 452,
@@ -289,7 +269,7 @@
    "name": "_execute_single",
    "classname": "NodeRun",
    "rank": "C",
-   "complexity": 14,
+   "complexity": 11,
    "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
   },
   {
@@ -711,6 +691,26 @@
    "rank": "C",
    "complexity": 17,
    "note": "graph resilience wrapper; landed via #262 merge before the checker was wired into CI"
+  },
+  {
+   "key": "packages/maistro-core/src/maistro/runs/model.py::_freeze_evidence_value",
+   "path": "packages/maistro-core/src/maistro/runs/model.py",
+   "line": 79,
+   "name": "_freeze_evidence_value",
+   "classname": null,
+   "rank": "C",
+   "complexity": 11,
+   "rationale": "AttemptResult immutable-evidence normalization introduced by execution-spine convergence; tracked by the complexity ratchet at its reviewed introduction value."
+  },
+  {
+   "key": "packages/maistro-core/src/maistro/runs/model.py::evidence_values_equal",
+   "path": "packages/maistro-core/src/maistro/runs/model.py",
+   "line": 97,
+   "name": "evidence_values_equal",
+   "classname": null,
+   "rank": "C",
+   "complexity": 15,
+   "rationale": "AttemptResult evidence comparison introduced by execution-spine convergence; tracked by the complexity ratchet at its reviewed introduction value."
   }
  ]
 }

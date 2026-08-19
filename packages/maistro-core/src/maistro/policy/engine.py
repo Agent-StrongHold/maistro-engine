@@ -17,16 +17,28 @@ did not happen; an approval-pending action commits when re-charged with
 from __future__ import annotations
 
 import threading
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 from maistro.policy.rules import PolicyRule
 from maistro.policy.types import Action, Decision, PolicyVerdict, SequenceState
 
+# Sink invoked with (key, action, verdict) for every non-ALLOW decision, so an
+# app consuming maistro.events can emit the `policy.decision` audit record
+# (ADR-037) without this package importing the events layer.
+DecisionSink = Callable[[str, Action, PolicyVerdict], None]
+
 
 class SequencePolicyEngine:
-    def __init__(self, rules: Iterable[PolicyRule], *, history_limit: int = 256) -> None:
+    def __init__(
+        self,
+        rules: Iterable[PolicyRule],
+        *,
+        history_limit: int = 256,
+        on_decision: DecisionSink | None = None,
+    ) -> None:
         self._rules: list[PolicyRule] = list(rules)
         self._history_limit = history_limit
+        self._on_decision = on_decision
         self._state: dict[str, SequenceState] = {}
         self._lock = threading.RLock()
 
@@ -38,7 +50,10 @@ class SequencePolicyEngine:
             verdict = self._evaluate(action, prospective, approved=approved)
             if verdict.decision is Decision.ALLOW:
                 state.commit(action)
-            return verdict
+        # Emit outside the lock so a slow/blocking sink can't stall other keys.
+        if verdict.decision is not Decision.ALLOW and self._on_decision is not None:
+            self._on_decision(key, action, verdict)
+        return verdict
 
     def evaluate(self, key: str, action: Action, *, approved: bool = False) -> PolicyVerdict:
         """Evaluate without committing (dry run)."""
@@ -47,8 +62,15 @@ class SequencePolicyEngine:
             return self._evaluate(action, state.with_action(action), approved=approved)
 
     def snapshot(self, key: str) -> SequenceState:
+        """Return a detached copy of the key's state — safe to read/mutate for
+        logging or diagnostics without perturbing future policy decisions."""
         with self._lock:
-            return self._state.get(key) or SequenceState.empty(self._history_limit)
+            existing = self._state.get(key)
+            return (
+                existing.copy()
+                if existing is not None
+                else SequenceState.empty(self._history_limit)
+            )
 
     def reset(self, key: str) -> None:
         with self._lock:

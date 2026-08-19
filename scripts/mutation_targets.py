@@ -43,14 +43,6 @@ def resolve_tests(src: str) -> Path | None:
     except ValueError:
         return None
 
-    # The source must still exist. Everything below checks that a *test* path
-    # exists and never that the file under test does, so a module deleted by
-    # the PR — whose test directory naturally survives — used to resolve
-    # happily, consume one of the capped slots ahead of a live modified file,
-    # and then hand cosmic-ray a `module-path` pointing at nothing. The
-    # workflow also filters deletions out of the diff; this is the half that
-    # can be tested, and the half that holds if the diff is ever built
-    # differently.
     if not (REPO / path).is_file():
         return None
 
@@ -58,8 +50,6 @@ def resolve_tests(src: str) -> Path | None:
     if (REPO / mirror).is_file():
         return mirror
 
-    # Walk up: tests/router/, tests/security/warden/ ... but never bare tests/,
-    # which is the whole suite and defeats the point of scoping.
     parent = rel.parent
     while parent != Path("."):
         candidate = CORE_TESTS / parent
@@ -112,7 +102,6 @@ def _source_root(path: Path, package: Path) -> Path:
 
 
 def _nearest_test_scope(test_root: Path, rel: Path) -> Path:
-
     parent = rel.parent
     while True:
         candidate = test_root / parent
@@ -135,29 +124,12 @@ def production_sources() -> list[str]:
 def sources_for_test(test_path: str) -> list[str]:
     """Map a changed TEST path back to the source files it covers.
 
-    The inverse of `resolve_tests`, and it exists because a test-only PR was
-    invisible to the mutation gate. The changed-files filter strips `/tests/`,
-    so a PR whose entire purpose is killing surviving mutants never triggered
-    the job that measures them -- observed on the PR that added
-    `tests/graph/durable_runs/test_executor_mutants.py`.
-
-    Two rules, precise first:
-
-    1. Mirror. `tests/router/test_scorer.py` -> `src/maistro/router/scorer.py`
-       when that file exists. One test file, one source file, no guessing.
-
-    2. Directory. Otherwise the test's directory mirrors a source package, so
-       every module in that package is a candidate:
-       `tests/graph/durable_runs/test_executor_mutants.py` ->
-       `src/maistro/graph/durable_runs/*.py`.
-
-    Rule 2 is not a fallback for tidiness -- it is the case that actually
-    occurs. The file that motivated this is named `test_executor_mutants.py`,
-    which mirrors to `executor_mutants.py`, a module that does not exist. A
-    mirror-only inverse would have missed the very PR it was written for.
-
-    Breadth is bounded by the existing priority ranking and `--limit`, and any
-    file the cap drops is named on stderr rather than silently skipped.
+    This inverse mapping exists for test-only PRs whose purpose is to kill
+    surviving mutants. When a PR also changes production code, ``expand``
+    deliberately does not widen from its supporting tests: the blocking PR
+    gate measures every changed production source and uses the mapped tests as
+    the kill scope. Test-to-source inference is only necessary when there are
+    no changed production sources at all.
     """
     path = Path(test_path)
     try:
@@ -173,36 +145,40 @@ def sources_for_test(test_path: str) -> list[str]:
     src_dir = CORE_SRC / (rel.parent if path.suffix else rel)
     if not (REPO / src_dir).is_dir():
         return []
-    # `__init__.py` is excluded, and not for tidiness. Targets are ranked by
-    # (priority, path), so `__init__.py` sorts ahead of every real module in
-    # its package and would consume a capped slot before `executor.py` ever
-    # got one -- the budget would go to re-exports while the module the tests
-    # were written for went unmutated.
     return sorted(
         str(src_dir / p.name) for p in (REPO / src_dir).glob("*.py") if p.name != "__init__.py"
     )
 
 
-def expand(paths: list[str]) -> list[str]:
-    """Resolve a mixed list of changed source and test paths to source files.
+def _is_test_path(path: str) -> bool:
+    parts = Path(path).parts
+    return "tests" in parts or any(part.startswith("test_") for part in parts[-1:])
 
-    A test path contributes the sources it covers; anything else passes
-    through unchanged. Order is preserved and duplicates collapse, so a PR that
-    changes both `executor.py` and its tests mutates that file once.
+
+def expand(paths: list[str]) -> list[str]:
+    """Resolve changed paths to the production sources the PR gate must mutate.
+
+    If any production source changed, mutate exactly those changed production
+    sources. Supporting test edits affect the tests used to kill mutants, not
+    the set of production files under review. This prevents a focused source
+    change plus broad characterization tests from expanding into an unrelated
+    package-wide mutation sweep.
+
+    For a test-only PR, preserve inverse mapping so new mutant-killing tests are
+    still measured against the source files they cover.
     """
+    explicit_sources = [p for p in paths if p and not _is_test_path(p)]
+    if explicit_sources:
+        return list(dict.fromkeys(explicit_sources))
+
     out: list[str] = []
     for p in paths:
-        expanded = sources_for_test(p) if CORE_TESTS.as_posix() in p else [p]
-        for item in expanded:
+        for item in sources_for_test(p):
             if item not in out:
                 out.append(item)
     return out
 
 
-# Mutation budget is finite, so when it has to be spent partially it is spent
-# where a surviving mutant is worst. security/ and router/ first: an unkilled
-# mutant in the Warden or the scorer is a silently-weakened control, where one
-# in a graph node is usually a missing assertion.
 _PRIORITY = (
     "src/maistro/security/",
     "src/maistro/policy/",
@@ -234,9 +210,6 @@ def _requested_files(args: list[str]) -> list[str]:
 
 
 def _resolve_targets(files: list[str]) -> tuple[list[tuple[str, Path]], list[str]]:
-    # expand() first: a test-only change (PR #320) must still resolve to a
-    # mutatable target, by mapping the test path back to the source(s) it
-    # covers before the source->test-scope resolution below runs.
     files = expand(files)
     targets: list[tuple[str, Path]] = []
     unresolved: list[str] = []
@@ -257,8 +230,6 @@ def _apply_limit(targets: list[tuple[str, Path]], limit: int) -> list[tuple[str,
 
     dropped = targets[limit:]
     targets = targets[:limit]
-    # Never a silent truncation: a gate that quietly covers less than it
-    # claims is the exact failure this whole workflow was rewritten to remove.
     print(
         f"::warning::mutation budget limit={limit}; "
         f"{len(dropped)} changed file(s) NOT mutated in this run "
@@ -282,7 +253,6 @@ def main(argv: list[str]) -> int:
         return 1
 
     targets.sort(key=lambda t: (priority(t[0]), t[0]))
-
     targets = _apply_limit(targets, limit)
 
     for src, tests in targets:

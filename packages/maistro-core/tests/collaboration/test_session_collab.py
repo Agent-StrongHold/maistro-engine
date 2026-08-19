@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 
 import pytest
 
@@ -96,10 +97,10 @@ async def test_history_and_message_feed_require_edit():
         await collab.post_message("s", actor="carol", content="hi")
 
     await collab.post_message("s", actor="alice", content="hello team")
-    kinds = [e.kind for e in collab.history("s")]
+    kinds = [e.kind for e in collab.history("s", "alice")]
     assert kinds[0] == "created" and "shared" in kinds and kinds[-1] == "message"
     # after_seq filters the backlog
-    tail = collab.history("s", after_seq=1)
+    tail = collab.history("s", "alice", after_seq=1)
     assert all(e.seq > 1 for e in tail)
 
 
@@ -136,9 +137,9 @@ async def test_revoke_editor_and_noop_on_non_member():
     await collab.revoke("s", actor="alice", target="bob")
     assert collab.role_of("s", "bob") is None
     # revoking someone who isn't a member is a no-op (no raise, no event).
-    before = len(collab.history("s"))
+    before = len(collab.history("s", "alice"))
     await collab.revoke("s", actor="alice", target="ghost")
-    assert len(collab.history("s")) == before
+    assert len(collab.history("s", "alice")) == before
 
 
 async def test_set_role_on_non_member_denied():
@@ -171,4 +172,94 @@ async def test_leave_updates_presence_and_publishes():
 
     await collab.leave("s", "alice")
     assert collab.presence("s") == []
-    assert collab.history("s")[-1].kind == "left"
+    assert collab.history("s", "alice")[-1].kind == "left"
+
+
+async def test_reshare_cannot_demote_last_owner():
+    # A duplicate invite for the only owner must not silently strand the session.
+    collab = SessionCollaboration()
+    await collab.create("s", owner="alice")
+    with pytest.raises(LastOwnerError):
+        await collab.share("s", actor="alice", target="alice", role=Role.VIEWER)
+    assert collab.role_of("s", "alice") is Role.OWNER
+
+
+async def test_leave_for_non_present_user_is_noop():
+    # A caller can't fan out a spoofed 'left' event for a user who never joined.
+    collab = SessionCollaboration()
+    await collab.create("s", owner="alice")
+    before = len(collab.history("s", "alice"))
+    await collab.leave("s", "ghost")
+    assert len(collab.history("s", "alice")) == before
+
+
+async def test_history_requires_view():
+    collab = SessionCollaboration()
+    await collab.create("s", owner="alice")
+    with pytest.raises(PermissionDenied):
+        collab.history("s", "stranger")
+
+
+async def test_heartbeat_publishes_presence_on_reactivation():
+    clock = _Clock()
+    collab = SessionCollaboration(idle_after=60, away_after=300, clock=clock)
+    await collab.create("s", owner="alice")
+    await collab.join("s", "alice")
+    clock.t += 120  # go idle
+    assert collab.presence("s")[0].state is PresenceState.IDLE
+
+    before = len(collab.history("s", "alice"))
+    await collab.heartbeat("s", "alice")  # reactivate
+    events = collab.history("s", "alice")
+    assert len(events) == before + 1
+    assert events[-1].kind == "presence" and events[-1].data["state"] is PresenceState.ACTIVE
+
+    # A heartbeat while already active does not spam presence events.
+    steady = len(collab.history("s", "alice"))
+    await collab.heartbeat("s", "alice")
+    assert len(collab.history("s", "alice")) == steady
+
+
+async def test_revoke_ends_live_subscriber_stream():
+    collab = SessionCollaboration()
+    await collab.create("s", owner="alice")
+    await collab.share("s", actor="alice", target="bob", role=Role.VIEWER)
+
+    agen = collab.subscribe("s", "bob")
+    collected: list[str] = []
+
+    async def drain() -> None:
+        async for event in agen:
+            collected.append(event.kind)
+
+    task = asyncio.ensure_future(drain())
+    await asyncio.sleep(0)  # register the subscriber
+    await collab.revoke("s", actor="alice", target="bob")
+    # The close sentinel ends the generator; the post-revoke message never arrives.
+    await asyncio.wait_for(task, timeout=1.0)
+    await collab.post_message("s", actor="alice", content="after")
+    assert "message" not in collected
+
+
+async def test_subscriber_queue_is_bounded():
+    # A registered but non-consuming subscriber must not grow without bound: its
+    # queue caps at the configured limit, dropping oldest events.
+    collab = SessionCollaboration(subscriber_queue_limit=8)
+    await collab.create("s", owner="alice")
+
+    sub = collab.subscribe("s", "alice")
+    task = asyncio.ensure_future(sub.__anext__())
+    await asyncio.sleep(0)  # run the generator to queue.get(), registering the queue
+
+    # post_message doesn't yield to the loop, so the parked getter never drains:
+    # all events pile into the bounded queue, which drops oldest past its cap.
+    for i in range(100):
+        await collab.post_message("s", actor="alice", content=str(i))
+
+    queues = collab._subscribers["s"]["alice"]
+    assert queues and all(q.qsize() <= 8 for q in queues)
+
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration):
+        await task
+    await sub.aclose()

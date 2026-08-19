@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from maistro.graph.definitions import Edge, Graph, Node
-from maistro.graph.durable_runs.executor import resume_durable_graph, run_durable_graph
+from maistro.graph.durable_runs import resume_durable_graph, run_durable_graph
 from maistro.graph.durable_runs.protocol import DurableRunStore
 from maistro.graph.durable_runs.types import DurableRunRecord
 from maistro.graph.execution_state import GraphExecutionState

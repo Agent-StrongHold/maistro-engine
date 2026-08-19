@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Run vulture and fail on unclassified or never-allowlisted findings.
+"""Run Vulture and require an exact, monotonic reviewed debt ledger.
 
-This is a ratchet, not a blanket suppression: findings must match a reviewed
-category rule in quality/vulture-baseline.json. High-confidence unreachable code
-is always treated as a fix-now error because it has no legitimate dynamic-use
-explanation.
+Rules in quality/vulture-baseline.json explain why a static-analysis category is
+accepted. Each rule also records the count and SHA-256 digest of the sorted
+stable finding-identity multiset. Count catches growth and unbanked improvement;
+the digest catches same-count substitution. High-confidence unreachable code is
+never allowlisted.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -43,8 +45,27 @@ class Finding:
             confidence=int(match.group("confidence")),
         )
 
+    @property
+    def stable_key(self) -> str:
+        """Identity that survives unrelated line movement while retaining symbol identity."""
+        return f"{self.path}::{self.message}"
+
     def render(self) -> str:
         return f"{self.path}:{self.line}: {self.message} ({self.confidence}% confidence)"
+
+
+@dataclass(frozen=True)
+class Classification:
+    by_rule: dict[str, list[Finding]]
+    unclassified: list[Finding]
+    never_allowlist: list[Finding]
+
+
+@dataclass(frozen=True)
+class RuleLedger:
+    rule_id: str
+    finding_count: int
+    finding_sha256: str
 
 
 def _load_baseline() -> dict[str, Any]:
@@ -62,17 +83,14 @@ def _matches_rule(finding: Finding, rule: dict[str, Any]) -> bool:
     path_regex = rule.get("path_regex")
     if path_regex and not re.search(str(path_regex), finding.path):
         return False
-
     message_regex = rule.get("message_regex")
     if message_regex and not re.search(str(message_regex), finding.message):
         return False
-
     source_needles = rule.get("source_contains_any") or []
     if source_needles:
         source = _source_for(finding.path)
         if not any(str(needle) in source for needle in source_needles):
             return False
-
     return True
 
 
@@ -87,16 +105,10 @@ def _run_vulture(args: list[str]) -> list[Finding]:
     return findings
 
 
-def main(argv: list[str]) -> int:
-    scan_args = argv or ["packages", "tests", "--exclude", "*/.venv/*"]
-    baseline = _load_baseline()
-    rules = baseline["rules"]
-
-    findings = _run_vulture(scan_args)
-    classified: dict[str, int] = {}
+def _classify(findings: list[Finding], rules: list[dict[str, Any]]) -> Classification:
+    by_rule: dict[str, list[Finding]] = {str(rule["id"]): [] for rule in rules}
     unclassified: list[Finding] = []
     never_allowlist: list[Finding] = []
-
     for finding in findings:
         if "unreachable code" in finding.message:
             never_allowlist.append(finding)
@@ -105,26 +117,100 @@ def main(argv: list[str]) -> int:
         if matched is None:
             unclassified.append(finding)
             continue
-        key = str(matched["id"])
-        classified[key] = classified.get(key, 0) + 1
+        by_rule[str(matched["id"])].append(finding)
+    return Classification(by_rule, unclassified, never_allowlist)
 
+
+def _ledger(rule_id: str, findings: list[Finding]) -> RuleLedger:
+    identities = sorted(finding.stable_key for finding in findings)
+    payload = "\n".join(identities).encode("utf-8")
+    return RuleLedger(rule_id, len(identities), hashlib.sha256(payload).hexdigest())
+
+
+def _ledger_failures(
+    rules: list[dict[str, Any]], classification: Classification
+) -> tuple[list[RuleLedger], list[tuple[RuleLedger, int, str]]]:
+    missing: list[RuleLedger] = []
+    changed: list[tuple[RuleLedger, int, str]] = []
+    for rule in rules:
+        rule_id = str(rule["id"])
+        current = _ledger(rule_id, classification.by_rule[rule_id])
+        expected_count = rule.get("finding_count")
+        expected_digest = rule.get("finding_sha256")
+        if not isinstance(expected_count, int) or not isinstance(expected_digest, str):
+            missing.append(current)
+            continue
+        if current.finding_count != expected_count or current.finding_sha256 != expected_digest:
+            changed.append((current, expected_count, expected_digest))
+    return missing, changed
+
+
+def _print_summary(findings: list[Finding], classification: Classification) -> None:
     print("vulture baseline summary:")
     print(f"  total findings: {len(findings)}")
-    for rule_id, count in sorted(classified.items()):
-        print(f"  {rule_id}: {count}")
-    print(f"  unclassified: {len(unclassified)}")
-    print(f"  never_allowlist: {len(never_allowlist)}")
+    for rule_id, accepted in sorted(classification.by_rule.items()):
+        print(f"  {rule_id}: {len(accepted)}")
+    print(f"  unclassified: {len(classification.unclassified)}")
+    print(f"  never_allowlist: {len(classification.never_allowlist)}")
 
-    if never_allowlist:
-        print("\nUnreachable-code findings must be fixed:", file=sys.stderr)
-        for finding in never_allowlist[:50]:
-            print(f"  {finding.render()}", file=sys.stderr)
-    if unclassified:
-        print("\nUnclassified vulture findings need owner/category/rationale:", file=sys.stderr)
-        for finding in unclassified[:50]:
-            print(f"  {finding.render()}", file=sys.stderr)
 
-    return 1 if never_allowlist or unclassified else 0
+def _print_findings(title: str, findings: list[Finding]) -> None:
+    if not findings:
+        return
+    print(f"\n{title}", file=sys.stderr)
+    for finding in findings[:50]:
+        print(f"  {finding.render()}", file=sys.stderr)
+
+
+def _print_ledger_failures(
+    missing: list[RuleLedger], changed: list[tuple[RuleLedger, int, str]]
+) -> None:
+    if missing:
+        print("\nRules missing exact count+digest ledger values:", file=sys.stderr)
+        for item in missing:
+            print(
+                f'  {item.rule_id}: "finding_count": {item.finding_count}, '
+                f'"finding_sha256": "{item.finding_sha256}"',
+                file=sys.stderr,
+            )
+    if changed:
+        print("\nReviewed Vulture debt changed:", file=sys.stderr)
+        for current, expected_count, expected_digest in changed:
+            direction = "grew" if current.finding_count > expected_count else "shrunk"
+            if current.finding_count == expected_count:
+                direction = "changed identity at constant count"
+            print(
+                f"  {current.rule_id}: {direction}; expected count={expected_count} "
+                f"sha256={expected_digest}, current count={current.finding_count} "
+                f"sha256={current.finding_sha256}",
+                file=sys.stderr,
+            )
+        print(
+            "\nAny improvement must be banked by lowering the count and updating the digest in "
+            "the same PR. Same-count substitutions require explicit review.",
+            file=sys.stderr,
+        )
+
+
+def main(argv: list[str]) -> int:
+    scan_args = argv or ["packages", "tests", "--exclude", "*/.venv/*"]
+    rules = _load_baseline()["rules"]
+    findings = _run_vulture(scan_args)
+    classification = _classify(findings, rules)
+    missing, changed = _ledger_failures(rules, classification)
+
+    _print_summary(findings, classification)
+    _print_findings("Unreachable-code findings must be fixed:", classification.never_allowlist)
+    _print_findings(
+        "Unclassified vulture findings need owner/category/rationale:",
+        classification.unclassified,
+    )
+    _print_ledger_failures(missing, changed)
+
+    failed = bool(
+        classification.never_allowlist or classification.unclassified or missing or changed
+    )
+    return int(failed)
 
 
 if __name__ == "__main__":

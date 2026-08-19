@@ -288,20 +288,27 @@ def main() -> int:
         for module in removed:
             print(f"  - {module}")
 
-    if not added:
-        print("\nNo newly-unreachable modules.")
-        return 0
+    if added:
+        print(f"\n{len(added)} module(s) are NEWLY UNREACHABLE:\n")
+        for module in added:
+            print(f"  {module}")
+        print(
+            "\nNothing that runs imports these. If that is intended — a library-only\n"
+            "surface, or test scaffolding — add them to quality/reachability-baseline.json\n"
+            "with a note. If it is not, they are built-but-never-wired: give them a call\n"
+            "path, and check that no doc already claims they run."
+        )
 
-    print(f"\n{len(added)} module(s) are NEWLY UNREACHABLE:\n")
-    for module in added:
-        print(f"  {module}")
-    print(
-        "\nNothing that runs imports these. If that is intended — a library-only\n"
-        "surface, or test scaffolding — add them to quality/reachability-baseline.json\n"
-        "with a note. If it is not, they are built-but-never-wired: give them a call\n"
-        "path, and check that no doc already claims they run."
-    )
-    return 1
+    if added or removed:
+        if removed:
+            print(
+                "\nThe reviewed baseline must shrink when modules become reachable. "
+                "Remove the stale entries above before merging."
+            )
+        return 1
+
+    print("\nReachability baseline matches the current unreachable set.")
+    return 0
 
 
 if __name__ == "__main__":
