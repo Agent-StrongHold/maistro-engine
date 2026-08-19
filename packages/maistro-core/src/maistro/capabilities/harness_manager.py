@@ -67,6 +67,49 @@ class HarnessSessionManager:
             return Unavailable(slot=SLOT_NAME, reason=f"unknown harness session: {session_id}")
         return await safe.send(session_id, messages)
 
+    def _bound_session(
+        self,
+        session_id: str,
+        binding: Binding,
+    ) -> SafeHarnessRunner | Unavailable:
+        safe = self._sessions.get(session_id)
+        if safe is None:
+            return Unavailable(slot=SLOT_NAME, reason=f"unknown harness session: {session_id}")
+        if binding.capability != SLOT_NAME:
+            return Unavailable(
+                slot=binding.capability,
+                reason=f"Binding capability must be {SLOT_NAME!r} for a harness session",
+            )
+        if binding.config or binding.credential_refs:
+            return Unavailable(
+                slot=SLOT_NAME,
+                reason=(
+                    "cached harness session was not created with Binding config/credentials; "
+                    "binding-scoped session creation is required"
+                ),
+            )
+        return safe
+
+    async def _resolve_session_provider(
+        self,
+        safe: SafeHarnessRunner,
+        binding: Binding,
+    ) -> SafeHarnessRunner | Unavailable:
+        if not self._registry.is_enabled(SLOT_NAME):
+            return Unavailable(slot=SLOT_NAME, reason="harness_runner slot is disabled")
+        if binding.provider_name and binding.provider_name != safe.name:
+            return Unavailable(
+                slot=SLOT_NAME,
+                reason=(
+                    f"Binding pins provider {binding.provider_name!r}, "
+                    f"but session uses {safe.name!r}"
+                ),
+            )
+        health = await safe.healthcheck()
+        if not health.healthy:
+            return Unavailable(slot=SLOT_NAME, reason=health.detail or "provider unhealthy")
+        return safe
+
     async def send_invocation(
         self,
         session_id: str,
@@ -87,38 +130,13 @@ class HarnessSessionManager:
         the Binding constraints that can be proven for an already-created session.
         """
 
-        safe = self._sessions.get(session_id)
-        if safe is None:
-            return Unavailable(slot=SLOT_NAME, reason=f"unknown harness session: {session_id}")
-        if binding.capability != SLOT_NAME:
-            return Unavailable(
-                slot=binding.capability,
-                reason=f"Binding capability must be {SLOT_NAME!r} for a harness session",
-            )
-        if binding.config or binding.credential_refs:
-            return Unavailable(
-                slot=SLOT_NAME,
-                reason=(
-                    "cached harness session was not created with Binding config/credentials; "
-                    "binding-scoped session creation is required"
-                ),
-            )
+        bound = self._bound_session(session_id, binding)
+        if isinstance(bound, Unavailable):
+            return bound
+        safe = bound
 
         async def resolver(candidate: Binding) -> SafeHarnessRunner | Unavailable:
-            if not self._registry.is_enabled(SLOT_NAME):
-                return Unavailable(slot=SLOT_NAME, reason="harness_runner slot is disabled")
-            if candidate.provider_name and candidate.provider_name != safe.name:
-                return Unavailable(
-                    slot=SLOT_NAME,
-                    reason=(
-                        f"Binding pins provider {candidate.provider_name!r}, "
-                        f"but session uses {safe.name!r}"
-                    ),
-                )
-            health = await safe.healthcheck()
-            if not health.healthy:
-                return Unavailable(slot=SLOT_NAME, reason=health.detail or "provider unhealthy")
-            return safe
+            return await self._resolve_session_provider(safe, candidate)
 
         executed = False
 
@@ -151,10 +169,6 @@ class HarnessSessionManager:
         if not isinstance(result, dict):
             raise TypeError("harness Invocation result must be a response mapping")
         if not executed and result.get("actions"):
-            # A completed Invocation can be reused for the same logical effect.
-            # Its provider call and ActionGate already ran, so returning the
-            # stored action list would make downstream consumers execute those
-            # actions again without charging/rechecking the current gate.
             result = {**result, "actions": []}
         return result
 
