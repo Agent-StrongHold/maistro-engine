@@ -58,6 +58,36 @@ general content-negotiation scheme.
 
 Tracking: implement ADR-076's API-wide version negotiation in v1.1.
 
+### Recurring schedules do not survive a restart
+
+`/v1/schedules` accepts and runs recurring tasks, but the schedule store is
+in-memory. A process restart discards every schedule, with no error and no
+indication to the user who created it.
+
+This diverges from [ADR-046](docs/adr/ADR-046-scheduler.md), which specifies
+Postgres persistence and re-registration of enabled schedules on startup. The
+divergence is unrecorded drift rather than a decision — the shipped scheduler
+arrived inside an unrelated coverage PR and cites nothing (#343).
+
+Tracking: implement [SPEC-080126-3a7c](docs/specs/SPEC-080126-3a7c-durable-scheduler.md)
+in v1.1. ADR-046 remains the target; it is deliberately not being superseded by
+what currently ships.
+
+### Security controls specified but not reachable
+
+Three controls have modules, tests, and specs, but no production call path.
+`COMPLIANCE.md` and `SECURITY.md` have been corrected to say so rather than
+citing the module paths as evidence the controls operate (#346):
+
+- **Signed code registry** (`code_registry/verify.py`) — `CodeRegistry.register()`
+  is never called; no code is signature-checked at load.
+- **Plan-approval gates** (`tools/approval/gate.py`) — the `ApprovalGate`
+  Protocol has no implementations.
+- **Elevation grants** — the store is wired into the container (#347), but no
+  surface issues grants, so no elevation can be requested or cleared.
+
+Tracking: each needs a wiring design, not just a call site — see #346.
+
 ## Release-Notes Text
 
 The following text is intended to be copied verbatim into the release notes.

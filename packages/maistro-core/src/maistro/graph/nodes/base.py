@@ -70,7 +70,7 @@ class NodeResult(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     success: bool
-    output: BaseModel | dict[str, Any] | None = None
+    output: dict[str, Any] | BaseModel | None = None
     latency_ms: int = 0
     error_code: str | None = None  # http status / exception class / "timeout"
     error_message: str | None = None

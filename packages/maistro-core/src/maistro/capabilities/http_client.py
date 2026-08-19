@@ -13,14 +13,19 @@ from typing import Any
 
 import httpx
 
+from maistro.http import get_shared_client
+
 _DEFAULT_TIMEOUT = 10.0
 
 
 class HttpxAsyncHttp:
-    """AsyncHttp backed by a per-call `httpx.AsyncClient`.
+    """AsyncHttp backed by the shared, pooled client for its configuration.
 
-    A fresh client is opened per request so the seam is safe to construct once
-    and reuse across event loops / long-lived app state without holding sockets.
+    This used to open a fresh client per request, for a good reason: an
+    `AsyncClient` binds to the event loop that created it, so a client held on
+    long-lived app state breaks when a second loop touches it. `maistro.http`
+    keeps that property — its cache is keyed by the running loop — while
+    removing the per-request construction cost and giving connection reuse.
     """
 
     def __init__(
@@ -39,7 +44,7 @@ class HttpxAsyncHttp:
             self._headers["Authorization"] = f"Bearer {token}"
 
     def _client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(
+        return get_shared_client(
             base_url=self._base_url,
             headers=self._headers,
             timeout=self._timeout,
@@ -47,15 +52,13 @@ class HttpxAsyncHttp:
         )
 
     async def get_json(self, path: str) -> dict[str, Any]:
-        async with self._client() as client:
-            resp = await client.get(path)
-            resp.raise_for_status()
-            data: dict[str, Any] = resp.json()
-            return data
+        resp = await self._client().get(path)
+        resp.raise_for_status()
+        data: dict[str, Any] = resp.json()
+        return data
 
     async def post_json(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
-        async with self._client() as client:
-            resp = await client.post(path, json=body)
-            resp.raise_for_status()
-            data: dict[str, Any] = resp.json()
-            return data
+        resp = await self._client().post(path, json=body)
+        resp.raise_for_status()
+        data: dict[str, Any] = resp.json()
+        return data

@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 import httpx
 
 from maistro.agents.export import export_agent
+from maistro.http import shared_client
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -264,7 +265,7 @@ class HTTPHarnessTransport:
     ) -> HarnessTaskResult:
         if self._client is not None:
             return await self._post(self._client, harness, bundle, task)
-        async with httpx.AsyncClient(timeout=self._timeout_s) as client:
+        async with shared_client(timeout=self._timeout_s) as client:
             return await self._post(client, harness, bundle, task)
 
     async def _post(

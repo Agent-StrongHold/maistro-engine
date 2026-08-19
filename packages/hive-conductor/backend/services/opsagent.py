@@ -14,7 +14,7 @@ import logging
 import os
 from typing import Any
 
-import httpx
+from maistro.http import shared_client
 
 logger = logging.getLogger("hive.opsagent")
 
@@ -28,7 +28,7 @@ def _headers() -> dict[str, str]:
 
 async def create_team(team_id: str) -> dict[str, Any]:
     """Create a new chatbot team in OpsAgent."""
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with shared_client(timeout=30.0) as client:
         r = await client.post(
             f"{OPSAGENT_BASE}/teams", json={"teamID": team_id}, headers=_headers()
         )
@@ -39,7 +39,7 @@ async def create_team(team_id: str) -> dict[str, Any]:
 
 async def set_prompt(team_id: str, prompt: str) -> dict[str, Any]:
     """Set/update the chatbot's system prompt."""
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with shared_client(timeout=30.0) as client:
         r = await client.put(
             f"{OPSAGENT_BASE}/teams/{team_id}/prompt",
             json={"content": prompt},
@@ -52,7 +52,7 @@ async def set_prompt(team_id: str, prompt: str) -> dict[str, Any]:
 
 async def get_prompt(team_id: str) -> dict[str, Any]:
     """Get the current prompt for a team."""
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with shared_client(timeout=30.0) as client:
         r = await client.get(f"{OPSAGENT_BASE}/teams/{team_id}/prompt", headers=_headers())
         if r.status_code == 200:
             return r.json()
@@ -62,7 +62,7 @@ async def get_prompt(team_id: str) -> dict[str, Any]:
 async def list_knowledge_bases(team_id: str = "") -> dict[str, Any]:
     """List available knowledge bases."""
     params = {"team_id": team_id} if team_id else {}
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with shared_client(timeout=30.0) as client:
         r = await client.get(f"{OPSAGENT_BASE}/knowledgebases", params=params, headers=_headers())
         if r.status_code == 200:
             return r.json()
@@ -74,7 +74,7 @@ async def create_knowledge_base(name: str, owner_email: str, team_id: str = "") 
     body: dict[str, Any] = {"name": name, "owner_email": owner_email}
     if team_id:
         body["team_id"] = team_id
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with shared_client(timeout=30.0) as client:
         r = await client.post(f"{OPSAGENT_BASE}/knowledgebases", json=body, headers=_headers())
         if r.status_code == 200:
             return r.json()
@@ -83,7 +83,7 @@ async def create_knowledge_base(name: str, owner_email: str, team_id: str = "") 
 
 async def add_confluence_source(kb_id: str, source_url: str) -> dict[str, Any]:
     """Add a Confluence space as a knowledge source."""
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with shared_client(timeout=30.0) as client:
         r = await client.post(
             f"{OPSAGENT_BASE}/knowledgebases/{kb_id}/sources",
             json={"source_url": source_url, "source_type": "confluence"},
@@ -102,7 +102,7 @@ async def chat(message: str, team_id: str = "", conversation_id: str = "") -> di
     if conversation_id:
         body["conversation_id"] = conversation_id
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with shared_client(timeout=60.0) as client:
         # Start job
         r = await client.post(f"{OPSAGENT_BASE}/chatbot/chat", json=body, headers=_headers())
         if r.status_code != 200:
@@ -134,7 +134,7 @@ async def chat(message: str, team_id: str = "", conversation_id: str = "") -> di
 
 async def get_team_config(team_id: str) -> dict[str, Any]:
     """Get full team configuration (model, tools, etc)."""
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with shared_client(timeout=30.0) as client:
         r = await client.get(
             f"{OPSAGENT_BASE}/ops-agent/teams/{team_id}/config", headers=_headers()
         )
@@ -145,7 +145,7 @@ async def get_team_config(team_id: str) -> dict[str, Any]:
 
 async def update_team_config(team_id: str, config: dict[str, Any]) -> dict[str, Any]:
     """Update team configuration (model, tools, etc)."""
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with shared_client(timeout=30.0) as client:
         r = await client.put(
             f"{OPSAGENT_BASE}/ops-agent/teams/{team_id}/config",
             json=config,

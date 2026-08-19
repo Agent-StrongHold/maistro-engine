@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-import httpx
+from maistro.http import shared_client
 
 logger = logging.getLogger("hive.skill_optimizer")
 
@@ -131,7 +131,7 @@ async def optimize_skill(
     ]
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with shared_client(timeout=60.0) as client:
             r = await client.post(
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
@@ -182,7 +182,7 @@ async def optimize_tool(
     ]
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with shared_client(timeout=60.0) as client:
             r = await client.post(
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},

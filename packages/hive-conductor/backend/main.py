@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -50,6 +51,7 @@ from routes import (
     voice,
     widgets,
     work_items,
+    workspaces,
     ws,
 )
 from routes import (
@@ -110,6 +112,30 @@ async def respond_to_confirm(confirm_id: str, body: ConfirmResponseBody):
     return await respond_confirm(confirm_id, body.response)
 
 
+async def _shutdown_background_services() -> None:
+    """Stop the optional background services, one bad stop never blocking the rest.
+
+    Extracted from `lifespan` so adding a service does not push that function past
+    the complexity gate; the ordering here mirrors the order they were started in.
+    """
+    # (service_module, stop_attr) — imported inside the loop so a module that
+    # fails to import only skips its own stop, as when each had its own try.
+    stoppers: tuple[tuple[str, str], ...] = (
+        ("services.design_service", "stop_design_service"),
+        ("services.evolution", "stop_evolution"),
+        ("services.scheduler", "stop_scheduler"),
+        ("services.memory_decay", "stop_memory_decay"),
+    )
+    for module_name, attr in stoppers:
+        name = module_name.rsplit(".", 1)[-1]
+        try:
+            result = getattr(import_module(module_name), attr)()
+            if inspect.isawaitable(result):
+                await result
+        except Exception as exc:
+            _log.warning("%s_stop_failed: %s", name, exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
@@ -158,30 +184,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as exc:
         _lifespan_log.warning("scheduler_start_failed: %s", exc, exc_info=True)
     try:
+        # SPEC-080126-9e42: the episodic decay cadence. A process-lifetime task,
+        # not a /v1/schedules record — decay is a system cadence and should live
+        # exactly as long as the process does.
+        from services.memory_decay import start_memory_decay
+
+        await start_memory_decay(get_settings())
+    except Exception as exc:
+        _lifespan_log.warning("memory_decay_start_failed: %s", exc, exc_info=True)
+    try:
         from services.evolution import start_evolution
 
         await start_evolution()
     except Exception as exc:
         _lifespan_log.warning("evolution_start_failed: %s", exc, exc_info=True)
     yield
-    try:
-        from services.design_service import stop_design_service
-
-        await stop_design_service()
-    except Exception as exc:
-        _lifespan_log.warning("design_service_stop_failed: %s", exc)
-    try:
-        from services.evolution import stop_evolution
-
-        await stop_evolution()
-    except Exception as exc:
-        _lifespan_log.warning("evolution_stop_failed: %s", exc)
-    try:
-        from services.scheduler import stop_scheduler
-
-        stop_scheduler()
-    except Exception as exc:
-        _lifespan_log.warning("scheduler_stop_failed: %s", exc)
+    await _shutdown_background_services()
     await engine_service.stop_engine()
     await foundation_service.stop_foundation()
 
@@ -216,6 +234,7 @@ def create_app() -> FastAPI:
     app.include_router(agents.router, prefix="/v1/agents")
     app.include_router(program.router, prefix="/v1/program")
     app.include_router(work_items.router, prefix="/v1/work-items")
+    app.include_router(workspaces.router, prefix="/v1/workspaces")
     app.include_router(mcp.router, prefix="/v1/mcp")
     app.include_router(cli.router, prefix="/v1/cli")
     app.include_router(containers.router, prefix="/v1/containers")

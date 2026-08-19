@@ -6,8 +6,9 @@ import contextlib
 import os
 from typing import Any
 
-import httpx
 from fastapi import APIRouter, Request
+
+from maistro.http import shared_client
 
 router = APIRouter(tags=["daily-report"])
 
@@ -39,6 +40,7 @@ def _get_pat(user_id: str) -> str | None:
 
 
 async def _fetch_jira(user_id: str) -> dict[str, Any]:
+    """Run the mounted Daily Report Jira section through the canonical durable Graph path."""
     pat = _get_pat(user_id)
     if not pat:
         return {"status": "no_pat", "count": 0, "issues": []}
@@ -52,35 +54,23 @@ async def _fetch_jira(user_id: str) -> dict[str, Any]:
             "issues": [],
         }
 
-    jql = "project = MY_PROJECT AND updated >= -7d ORDER BY updated DESC"
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            r = await client.get(
-                f"{jira_server_url}/rest/api/2/search",
-                params={
-                    "jql": jql,
-                    "maxResults": 15,
-                    "fields": "summary,status,assignee,issuetype,updated",
-                },
-                headers={"Authorization": f"Bearer {pat}", "Accept": "application/json"},
-            )
-            r.raise_for_status()
-            data = r.json()
-            issues = []
-            for i in data.get("issues", []):
-                f = i.get("fields", {})
-                issues.append(
-                    {
-                        "key": i.get("key"),
-                        "summary": f.get("summary"),
-                        "status": (f.get("status") or {}).get("name"),
-                        "assignee": ((f.get("assignee") or {}).get("displayName")),
-                        "updated": f.get("updated"),
-                    }
-                )
-            return {"status": "ok", "count": data.get("total", 0), "issues": issues}
-    except Exception as e:
-        return {"status": "error", "detail": str(e), "count": 0, "issues": []}
+        from services.daily_status_runner import run_daily_status_dag
+
+        return await run_daily_status_dag(
+            user_id=user_id,
+            project_id=None,
+            pat=pat,
+            base_url=jira_server_url,
+            flavor="server",
+        )
+    except Exception as exc:
+        return {
+            "status": "error",
+            "detail": str(exc),
+            "count": 0,
+            "issues": [],
+        }
 
 
 def _get_airtable_pat(user_id: str) -> str | None:
@@ -130,7 +120,7 @@ async def _fetch_airtable(user_id: str) -> dict[str, Any]:
     base_id = "appXXXXXXXXXXXXXX"  # MAISTRO base
     headers = {"Authorization": f"Bearer {airtable_pat}"}
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with shared_client(timeout=15.0) as client:
             r = await client.get(
                 f"https://api.airtable.com/v0/meta/bases/{base_id}/tables",
                 headers=headers,

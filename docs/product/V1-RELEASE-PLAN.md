@@ -99,9 +99,11 @@ tracked work.
 ## A3 — Freeze policy + PR template + tracking hygiene (S)
 
 - [ ] Enable GitHub Issues on the repo; file this plan as milestone `v1.0.0` + umbrella issue +
-      one issue per item here.
-- [ ] Pin the freeze rule (what merges: tracked items only; where: `develop`).
-- [ ] Add minimal `.github/PULL_REQUEST_TEMPLATE.md` with a "v1 tracked item? / workstream?"
+      one issue per item here. **Not doable from the tree** — needs the GitHub web UI/API;
+      the only remaining A3 task.
+- [x] Pin the freeze rule (what merges: tracked items only; where: `develop`) — `CONTRIBUTING.md`
+      §Feature freeze, above the branch model. Says to delete the section when the tag lands.
+- [x] Add minimal `.github/PULL_REQUEST_TEMPLATE.md` with a "v1 tracked item? / workstream?"
       checklist to stop freeze leaks.
 
 **AC:** plan converted to issues; template merged; policy pinned.
@@ -187,6 +189,10 @@ some of this; this item closes the remainder.
 - [ ] Post-#268 gap audit; wire each remaining suite into `ci.yml`/`quality.yml`.
 - [ ] Fix or skip-with-tracking-link tests that fail on first real run (expect some).
 - [ ] Root `tests/` runs on every PR, not just doc paths.
+- [x] Enforce the inventory: `scripts/check-suite-inventory.py` collects all 13 suites and fails
+      on drift from `docs/testing/SUITE-INVENTORY.md`; run as the last step of `ci.yml`'s `test`
+      job. Compares counts (not node-ID sets) — rationale in the script docstring. Drift is
+      repaired with `--update`, named in the failure message.
 
 **AC:** every orphaned suite appears in a CI invocation; the expected inventory is generated with
 `pytest --collect-only -q` per suite (node IDs — not static `def test_` counts, which
@@ -215,9 +221,14 @@ exist unrun). Python-version messaging is inconsistent (`.python-version`=3.13, 
 - [ ] Branch protection per ADR-095: `develop` (0 approvals + required checks), `integration`
       (0 approvals + required checks + formal-conformance), `main` (1 approval + required checks);
       linear history, squash/rebase only.
-- [ ] Add `develop`/`integration` to `registry.yml`; audit the other workflows' branch filters
-      for `integration`.
-- [ ] Check off the ADR-095 ACs.
+- [x] Add `develop`/`integration` to `registry.yml`; audit the other workflows' branch filters
+      for `integration`. **This item's premise was stale**: `registry.yml` already pushes on
+      `main`/`integration`/`develop` and no longer lists `research/pm-fleet-poc`. The full audit
+      of all 10 workflows found **no `integration` gap anywhere** — table recorded in ADR-095. No
+      trigger filters were changed.
+- [x] Check off the ADR-095 ACs — the CONTRIBUTING AC, which is genuinely true. The
+      required-status-checks AC stays **unchecked**: it is only verifiable in GitHub
+      branch-protection settings, not from the tree.
 
 **AC:** a red PR is mechanically blocked on every tier; ADR-095 ACs checked.
 
@@ -228,11 +239,23 @@ exist unrun). Python-version messaging is inconsistent (`.python-version`=3.13, 
 ## D1 — [CUT LIST] Remove or demote non-v1 surface area (L, dep A1)
 
 **DELETE from the tree:**
-- [ ] `maistro.scheduler` — 0-byte package (ADR-046 still Proposed). Delete; mark ADR-046
-      Deferred/Rejected. (Distinct from `maistro.scheduling`, which is real and ships.)
-- [ ] `apps/maistro-gateway-node-flutter` — README-only shell (SPEC-179 → Deferred).
-- [ ] `maistro-turing` Astro frontend (0 tests). The turing *library* ships; the turing backend
-      stays only if its 26 tests pass under C1.
+- [x] `maistro.scheduler` — 0-byte package, 0 importers. Deleted, plus its entry in
+      `scripts/verify-wheel-imports.py`'s `CORE_PUBLIC_SURFACE`.
+      **ADR-046's status was deliberately NOT changed.** This plan said "mark ADR-046
+      Deferred/Rejected"; the ADR is `status: Accepted`, and `Accepted → Deferred` is a *backward*
+      transition that ADR-097's forward-only state machine does not permit. Deleting an empty
+      placeholder is tree hygiene, not a reversal of the decision. ADR-046 instead carries a
+      factual implementation-status note (same shape as ADR-076's) recording that the placeholder
+      is gone and nothing is built. Flipping an Accepted ADR is a maintainer call.
+      (Distinct from `maistro.scheduling`, which is real and ships.)
+- [x] `apps/maistro-gateway-node-flutter` — README-only shell. Deleted (the whole `apps/` tree is
+      now gone), with its references cleaned out of `scripts/verify-monorepo-layout.sh`,
+      `security.yml`'s semgrep target list, `README.md` and `AGENTS.md`.
+      SPEC-179 → **Deferred** (`Proposed → Deferred` is a valid ADR-097 forward transition) with a
+      rationale note and a bootstrap recipe for recreating the app root.
+- [x] `maistro-turing` Astro frontend (17 files, 0 tests, referenced by no workflow, Dockerfile or
+      compose file). Deleted; `packages/maistro-turing/README.md` updated. The turing *library*
+      ships; the turing backend stays (its 26 tests are in `ci.yml` and green).
 - [ ] The 13 fully-contained remote branches (executed in A2; recorded here).
 
 **MARK EXPERIMENTAL (ships, no stability contract, not on PyPI):**

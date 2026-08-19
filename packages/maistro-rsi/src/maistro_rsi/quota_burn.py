@@ -12,10 +12,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import httpx
 import structlog
 
 from maistro.config.settings import get_settings
+from maistro.http import shared_client
 from maistro.quota.tracker import InMemoryQuotaTracker
 
 logger = structlog.get_logger()
@@ -41,7 +41,7 @@ async def discover_models(base_url: str | None = None, api_key: str | None = Non
     url = (base_url or settings.litellm.base_url).rstrip("/") + "/v1/models"
     headers = {"Authorization": f"Bearer {api_key or settings.litellm.master_key}"}
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with shared_client(timeout=15.0) as client:
         response = await client.get(url, headers=headers)
         response.raise_for_status()
         payload = response.json()

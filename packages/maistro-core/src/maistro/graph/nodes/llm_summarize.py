@@ -11,8 +11,9 @@ from __future__ import annotations
 import os
 from typing import ClassVar
 
-import httpx
 from pydantic import BaseModel, Field
+
+from maistro.http import shared_client
 
 from . import register_node
 from .base import BaseNode, NodeContext
@@ -105,7 +106,7 @@ class LlmSummarizeNode(BaseNode[LlmSummarizeIn, LlmSummarizeOut]):
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
-        async with httpx.AsyncClient(timeout=inputs.timeout_s) as client:
+        async with shared_client(timeout=inputs.timeout_s) as client:
             resp = await client.post(
                 f"{base_url}/v1/chat/completions", json=payload, headers=headers
             )

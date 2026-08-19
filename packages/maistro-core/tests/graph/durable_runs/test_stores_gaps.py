@@ -1,10 +1,6 @@
-"""Edge-case coverage for graph.durable_runs.stores — error paths, HITL guards,
-project-scoped filtering, and SQLite collision/optimistic-concurrency paths
-not exercised by the executor-level tests in test_durable_runs.py."""
+"""Edge-case coverage for canonical durable graph stores."""
 
 from __future__ import annotations
-
-from datetime import UTC, datetime
 
 import pytest
 
@@ -12,24 +8,34 @@ from maistro.graph.durable_runs.stores import (
     InMemoryDurableRunStore,
     SqliteDurableRunStore,
 )
-from maistro.graph.durable_runs.types import DurableRunRecord, RunStatus
+from maistro.runs.lifecycle import transition_node_run
+from maistro.runs.model import NodeRun, RunStatus
+
+from .._canonical_helpers import durable_record
 
 
-def _record_for(run_id: str, **overrides: object) -> DurableRunRecord:
-    now = datetime.now(UTC)
-    base = {
-        "run_id": run_id,
-        "dag_id": "d1",
-        "dag_snapshot": {"nodes": [], "edges": []},
-        "started_at": now,
-        "last_step_at": now,
-        "version": 1,
-    }
-    base.update(overrides)
-    return DurableRunRecord(**base)
-
-
-# --- InMemoryDurableRunStore -------------------------------------------------
+def _record_for(run_id: str, **overrides: object):  # type: ignore[no-untyped-def]
+    status = overrides.pop("status", RunStatus.RUNNING)
+    project_id = overrides.pop("project_id", "test-project")
+    active_node_id = overrides.pop("active_node_id", None)
+    if overrides:
+        raise AssertionError(f"unsupported test overrides: {sorted(overrides)}")
+    nodes = [{"id": active_node_id, "kind": "test.noop"}] if active_node_id else [{"id": "n1"}]
+    node_runs = ()
+    if status is RunStatus.PAUSED and active_node_id:
+        node_run = NodeRun(run_id=run_id, node_id=str(active_node_id), ordinal=1)
+        node_run = transition_node_run(node_run, RunStatus.QUEUED)
+        node_run = transition_node_run(node_run, RunStatus.RUNNING)
+        node_run = transition_node_run(node_run, RunStatus.PAUSED)
+        node_runs = (node_run,)
+    return durable_record(
+        {"id": "d1", "nodes": nodes, "edges": []},
+        run_id=run_id,
+        status=status,
+        active_node_id=active_node_id,
+        project_id=str(project_id),
+        node_runs=node_runs,
+    )
 
 
 async def test_update_missing_run_raises_keyerror() -> None:
@@ -42,7 +48,7 @@ async def test_list_by_status_respects_limit() -> None:
     store = InMemoryDurableRunStore()
     for i in range(5):
         await store.create(_record_for(f"r{i}"))
-    out = await store.list_by_status(RunStatus.PENDING, limit=2)
+    out = await store.list_by_status(RunStatus.RUNNING, limit=2)
     assert len(out) == 2
 
 
@@ -50,16 +56,14 @@ async def test_list_by_status_filters_by_project_id() -> None:
     store = InMemoryDurableRunStore()
     await store.create(_record_for("a", project_id="p1"))
     await store.create(_record_for("b", project_id="p2"))
-    out = await store.list_by_status(RunStatus.PENDING, project_id="p1")
-    assert [r.run_id for r in out] == ["a"]
+    out = await store.list_by_status(RunStatus.RUNNING, project_id="p1")
+    assert [record.run_id for record in out] == ["a"]
 
 
 async def test_list_for_project_respects_limit_and_ordering() -> None:
     store = InMemoryDurableRunStore()
-    rec1 = await store.create(_record_for("a", project_id="p1"))
-    rec2 = await store.create(_record_for("b", project_id="p1"))
-    bumped = rec2.model_copy(update={"version": 2, "started_at": rec1.started_at})
-    await store.update(bumped)
+    await store.create(_record_for("a", project_id="p1"))
+    await store.create(_record_for("b", project_id="p1"))
     out = await store.list_for_project("p1", limit=1)
     assert len(out) == 1
 
@@ -79,12 +83,9 @@ async def test_submit_hitl_answer_wrong_status_raises_valueerror() -> None:
 
 async def test_submit_hitl_answer_wrong_node_raises_valueerror() -> None:
     store = InMemoryDurableRunStore()
-    await store.create(_record_for("r1", status=RunStatus.PAUSED_HITL, current_node_id="ask"))
-    with pytest.raises(ValueError, match="waiting on node"):
+    await store.create(_record_for("r1", status=RunStatus.PAUSED, active_node_id="ask"))
+    with pytest.raises(ValueError, match="waiting on frontier"):
         await store.submit_hitl_answer("r1", "wrong-node", {"answer": "x"})
-
-
-# --- SqliteDurableRunStore ----------------------------------------------------
 
 
 async def test_sqlite_create_collision_raises_valueerror(tmp_path) -> None:
@@ -109,15 +110,15 @@ async def test_sqlite_list_by_status_filters_by_project_id(tmp_path) -> None:
     store = SqliteDurableRunStore(tmp_path / "durable.db")
     await store.create(_record_for("a", project_id="p1"))
     await store.create(_record_for("b", project_id="p2"))
-    out = await store.list_by_status(RunStatus.PENDING, project_id="p1")
-    assert [r.run_id for r in out] == ["a"]
+    out = await store.list_by_status(RunStatus.RUNNING, project_id="p1")
+    assert [record.run_id for record in out] == ["a"]
 
 
 async def test_sqlite_list_by_status_respects_limit(tmp_path) -> None:
     store = SqliteDurableRunStore(tmp_path / "durable.db")
     for i in range(5):
         await store.create(_record_for(f"r{i}"))
-    out = await store.list_by_status(RunStatus.PENDING, limit=2)
+    out = await store.list_by_status(RunStatus.RUNNING, limit=2)
     assert len(out) == 2
 
 
@@ -146,15 +147,15 @@ async def test_sqlite_submit_hitl_answer_wrong_status_raises_valueerror(tmp_path
 
 async def test_sqlite_submit_hitl_answer_wrong_node_raises_valueerror(tmp_path) -> None:
     store = SqliteDurableRunStore(tmp_path / "durable.db")
-    await store.create(_record_for("r1", status=RunStatus.PAUSED_HITL, current_node_id="ask"))
-    with pytest.raises(ValueError, match="waiting on node"):
+    await store.create(_record_for("r1", status=RunStatus.PAUSED, active_node_id="ask"))
+    with pytest.raises(ValueError, match="waiting on frontier"):
         await store.submit_hitl_answer("r1", "wrong-node", {"answer": "x"})
 
 
 async def test_sqlite_submit_hitl_answer_success_updates_record(tmp_path) -> None:
     store = SqliteDurableRunStore(tmp_path / "durable.db")
-    await store.create(_record_for("r1", status=RunStatus.PAUSED_HITL, current_node_id="ask"))
+    await store.create(_record_for("r1", status=RunStatus.PAUSED, active_node_id="ask"))
     updated = await store.submit_hitl_answer("r1", "ask", {"answer": "yes"})
-    assert updated.status == RunStatus.RUNNING
+    assert updated.status is RunStatus.QUEUED
     assert updated.hitl_answers["ask"]["answer"] == "yes"
     assert updated.version == 2

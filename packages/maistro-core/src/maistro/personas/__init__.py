@@ -1,17 +1,12 @@
-"""Persona authoring pipeline — declarative domain templates (ADR-060, SPEC-192).
-
-Public surface:
-
-- :mod:`maistro.personas.vocabulary` — declarative check vocabulary (P0).
-- :mod:`maistro.personas.rubric` — ``RubricEval`` + generic YAML loader (P0).
-- :mod:`maistro.personas.scorer` — ``RubricScorer`` / optional ``DeepEvalScorer`` (P0/P1).
-- :mod:`maistro.personas.schema` — persona template schema (P1).
-- :mod:`maistro.personas.expander` — persona → ``AgentRecipe`` roster expansion (P1).
-- :mod:`maistro.personas.golden` — versioned ``GoldenRecord`` store (P1).
-"""
+"""Persona authoring and live product-context domain."""
 
 from __future__ import annotations
 
+from maistro.personas.checklist import (
+    CapabilityItem,
+    capability_checklist,
+    default_checklist_ids,
+)
 from maistro.personas.expander import ExpandedAgent, ExpandedPersona, expand_persona
 from maistro.personas.golden import (
     EvidencedCriterion,
@@ -21,8 +16,10 @@ from maistro.personas.golden import (
     InMemoryGoldenRecordStore,
     SourceEvidence,
 )
+from maistro.personas.model import Persona, PersonaSurface
 from maistro.personas.rubric import EvalResult, RubricEval, load_evals, load_templates
 from maistro.personas.schema import (
+    BrandSpec,
     CriterionSpec,
     EvalSpec,
     PersonaTemplate,
@@ -30,8 +27,17 @@ from maistro.personas.schema import (
     VoiceSpec,
 )
 from maistro.personas.scorer import DeepEvalScorer, RubricScorer, create_judge_scorer
+from maistro.personas.store import (
+    InMemoryPersonaStore,
+    PersonaAlreadyExists,
+    PersonaNotFound,
+    PersonaStore,
+    WorkspacePersonaAlreadyExists,
+)
 
 __all__ = [
+    "BrandSpec",
+    "CapabilityItem",
     "CriterionSpec",
     "DeepEvalScorer",
     "EvalResult",
@@ -43,13 +49,22 @@ __all__ = [
     "GoldenRecordDiff",
     "GoldenRecordStore",
     "InMemoryGoldenRecordStore",
+    "InMemoryPersonaStore",
+    "Persona",
+    "PersonaAlreadyExists",
+    "PersonaNotFound",
+    "PersonaStore",
+    "PersonaSurface",
     "PersonaTemplate",
     "RubricEval",
     "RubricScorer",
     "SourceEvidence",
     "SpawnSpec",
     "VoiceSpec",
+    "WorkspacePersonaAlreadyExists",
+    "capability_checklist",
     "create_judge_scorer",
+    "default_checklist_ids",
     "expand_persona",
     "load_evals",
     "load_templates",

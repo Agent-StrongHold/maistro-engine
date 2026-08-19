@@ -18,7 +18,7 @@ import logging
 import os
 from typing import Any
 
-import httpx
+from maistro.http import shared_client
 
 logger = logging.getLogger("hive.corpus")
 
@@ -103,7 +103,7 @@ class CanonicalCorpus:
     async def _search(self, query: str, api_key: str) -> list[dict[str, Any]]:
         """Search Brave for examples."""
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
+            async with shared_client(timeout=15.0) as client:
                 r = await client.get(
                     "https://api.search.brave.com/res/v1/web/search",
                     headers={"X-Subscription-Token": api_key, "Accept": "application/json"},
@@ -147,7 +147,7 @@ Example: ["Uses short sentences that build momentum", "Opens with a specific con
 Output: {{"patterns": [str]}}"""
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with shared_client(timeout=30.0) as client:
                 r = await client.post(
                     f"{base}/chat/completions",
                     headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
@@ -258,7 +258,7 @@ Does this output match the quality bar set by these new examples? Score 0-100.
 Reply JSON: {{"score": int, "rationale": str}}"""
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with shared_client(timeout=30.0) as client:
                 r = await client.post(
                     f"{base}/chat/completions",
                     headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
@@ -306,7 +306,7 @@ Output to score:
 Reply JSON: {{"score": int, "matches": [str], "missing": [str], "suggestion": str}}"""
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with shared_client(timeout=30.0) as client:
                 r = await client.post(
                     f"{base}/chat/completions",
                     headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},

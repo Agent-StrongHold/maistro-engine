@@ -24,7 +24,7 @@ async def test_ntfy_client_posts_message_with_headers() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         captured["url"] = str(request.url)
         captured["body"] = request.content.decode()
-        captured["headers"] = dict(request.headers)
+        captured["headers"] = request.headers  # httpx.Headers: case-insensitive
         return httpx.Response(200)
 
     client = _mock_client(handler)
@@ -125,25 +125,16 @@ def test_ntfy_action_registered_in_builtins() -> None:
 async def test_ntfy_action_posts_formatted_message(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, Any] = {}
 
-    class FakeAsyncClient:
-        def __init__(self, *a: Any, **kw: Any) -> None:
-            pass
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["body"] = request.content.decode()
+        captured["headers"] = request.headers  # httpx.Headers: case-insensitive
+        return httpx.Response(200)
 
-        async def __aenter__(self) -> FakeAsyncClient:
-            return self
-
-        async def __aexit__(self, *a: Any) -> None:
-            return None
-
-        async def post(
-            self, url: str, *, content: bytes, headers: dict[str, str]
-        ) -> httpx.Response:
-            captured["url"] = url
-            captured["body"] = content.decode()
-            captured["headers"] = headers
-            return httpx.Response(200)
-
-    monkeypatch.setattr("maistro.events.handlers.httpx.AsyncClient", FakeAsyncClient)
+    # A MockTransport rather than a stand-in client class: the request is
+    # captured after httpx has built it, so the assertions below check what
+    # would actually go on the wire rather than what the call site passed.
+    monkeypatch.setattr("maistro.http._test_transport", httpx.MockTransport(handler), raising=False)
 
     trigger = Trigger(
         name="fitness-alert",

@@ -9,7 +9,6 @@ import logging
 import os
 from typing import Any
 
-import httpx
 from fastapi import APIRouter, Query, Request
 from services.airtable_cache import (
     get_airtable_base_tables_json,
@@ -22,6 +21,8 @@ from services.tool_primitives import (
     ToolCallContext,
     ToolCredentialResolver,
 )
+
+from maistro.http import shared_client
 
 router = APIRouter(tags=["widgets"])
 logger = logging.getLogger("hive.widgets")
@@ -103,7 +104,7 @@ async def widget_jira(  # noqa: C901  branchy per-display-mode rendering
         jql = pre + " ORDER BY" + order
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with shared_client(timeout=30.0) as client:
             # First page
             page_size = min(max_results, 100)
             r = await client.get(

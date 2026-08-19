@@ -15,7 +15,8 @@ dependencies = [
     "asyncpg>=0.30,<1",
     "pgvector>=0.3,<1",
     "pyyaml>=6.0,<7",
-    "cryptography>=48.0.1,<49",
+    # 50.x contains the security fix required by the supply-chain gate.
+    "cryptography>=50.0.0,<51",
     "argon2-cffi>=23.1,<25",
     # Warden's pattern engine (security/warden/patterns.py) prefers `regex` over
     # stdlib `re` for its match timeout. Declared so the timeout path is always
@@ -35,6 +36,14 @@ llm = [
 # The sandbox tool drives the `docker` CLI via subprocess, not the Python SDK,
 # so it needs no pip dependency. Kept as an explicit (empty) extra for clarity.
 sandbox = []
+# RE2 accelerates Warden's 47-pattern scan ~14x and, more importantly, bounds
+# its worst case: `re` backtracks, so attacker-shaped input can make a scan
+# superlinear. Optional because it is a native extension — without it Warden
+# falls back to `re` and behaves identically, just slower (see
+# security/warden/_regex.py).
+re2 = [
+    "google-re2>=1.1",
+]
 # Vendor-neutral tracing export. The agent tracing decorators use the OpenTelemetry
 # API directly (see observability/tracing.py); installing this extra + setting an OTLP
 # endpoint routes spans to any backend (Arize/Phoenix, Langfuse, Honeycomb, Jaeger).

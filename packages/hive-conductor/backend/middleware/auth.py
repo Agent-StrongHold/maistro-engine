@@ -58,6 +58,9 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
         "/v1/credentials": "credentials.write",
         "/v1/dags": "dags.write",
         "/v1/schedules": "schedules.write",
+        # Removing a workspace member is the same write-scope decision as
+        # creating the workspace in the first place (Persona/Workspace Phase G).
+        "/v1/workspaces": "workspaces.write",
     },
     "POST": {
         "/v1/settings": "config.write",
@@ -77,6 +80,10 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
         "/v1/optimizer": "dags.write",
         # A schedule is recurring autonomous execution.
         "/v1/schedules": "schedules.write",
+        # Workspace sub-resource mutations (membership, persona authoring, etc.)
+        # remain privileged. Creating one's own workspace tab is handled as an
+        # ordinary authenticated operation in _required_permission() below.
+        "/v1/workspaces": "workspaces.write",
         # The evolution tournament is the self-improvement loop's other door.
         "/v1/evolution": "rsi.execute",
         # Executes GitHub/GitLab tools with stored credentials against real
@@ -118,6 +125,10 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
         "/v1/credentials": "credentials.write",
         "/v1/dags": "dags.write",
         "/v1/schedules": "schedules.write",
+        # Setting a workspace's sticky per-agent tool bindings changes what
+        # tools that agent may call — same write-scope posture as every
+        # other workspace-settings mutation (Persona/Workspace system).
+        "/v1/workspaces": "workspaces.write",
     },
     "PATCH": {
         "/v1/settings": "config.write",
@@ -125,6 +136,9 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
         "/v1/capabilities": "config.write",
         # Toggling a skill changes what every future agent run may do.
         "/v1/skills": "skills.write",
+        # Archiving a workspace is the same write-scope decision as creating
+        # or deleting one (Persona/Workspace system).
+        "/v1/workspaces": "workspaces.write",
     },
 }
 
@@ -243,6 +257,21 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     },
                 )
 
+            # Persona-level feedback aggregates raw entries across all
+            # workspaces using that persona. A normal workspace member may not
+            # inspect other workspaces' user ids, comments, or identifiers.
+            # Keep the aggregate endpoint available to operators only.
+            if (
+                request.method == "GET"
+                and path.startswith("/v1/workspaces/persona-templates/")
+                and path.endswith("/feedback")
+                and user.get("role") != "admin"
+            ):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Admin permission required for persona-wide feedback"},
+                )
+
             required_perm = self._required_permission(request)
             if required_perm and not self._check_permission(user, required_perm):
                 return JSONResponse(
@@ -272,11 +301,23 @@ class AuthMiddleware(BaseHTTPMiddleware):
     def _required_permission(self, request: Request) -> str | None:
         method_perms = _PROTECTED_OPS.get(request.method, {})
         path = request.url.path
+        # Creating a workspace tab is a normal authenticated-user action. The
+        # route makes the caller its owner, so requiring task-scoped elevation
+        # here made the first-run daily account's workspace UI unusable.
+        if request.method == "POST" and path.rstrip("/") == "/v1/workspaces":
+            return None
         # Agent invoke (POST /v1/agents/{id}/invoke) is autonomous read — don't
         # gate behind elevation. Match the trailing segment, not a bare
         # substring: "in path" would also exempt any future route that merely
         # contains "/invoke" elsewhere (e.g. "/v1/agents/invoke-history").
         if path.endswith("/invoke"):
+            return None
+        # Thumbs +/- feedback (POST /v1/dag-runs/{id}/feedback,
+        # POST /v1/workspaces/{id}/feedback) is a low-stakes reaction, not a
+        # mutating operation on the thing itself — any authenticated member
+        # can leave it, same posture as dag-runs' pre-existing unrestricted
+        # feedback route. The route itself still checks workspace membership.
+        if path.endswith("/feedback"):
             return None
         for prefix, perm in method_perms.items():
             if path.startswith(prefix):

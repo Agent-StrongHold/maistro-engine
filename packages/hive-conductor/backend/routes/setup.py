@@ -16,6 +16,14 @@ logger = logging.getLogger("hive.setup")
 _SETUP_KEY = "__hive_setup__"
 _SEED_VAULT_KEY = "CONDUCTOR_SEED_MNEMONIC"
 
+# Least-privilege permissions assigned to the daily account created at setup.
+# Protected operations still require explicit password-backed /auth/elevate;
+# assignment only makes that elevation possible. DAG authoring/optimization is
+# a normal daily-user workflow, while broader configuration/infrastructure
+# permissions remain admin-only until a dedicated grant-management surface is
+# introduced.
+_DEFAULT_DAILY_USER_PERMISSIONS = ["dags.write"]
+
 
 def _vault_paths() -> tuple[str, str]:
     from config import get_settings
@@ -198,6 +206,7 @@ def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
         password_hash=user_hash,
         role="user",
         is_active=True,
+        permissions=list(_DEFAULT_DAILY_USER_PERMISSIONS),
         created_at=now_ts,
         did=user_did,
     )

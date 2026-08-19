@@ -15,7 +15,7 @@ import logging
 import os
 from typing import Any
 
-import httpx
+from maistro.http import shared_client
 
 logger = logging.getLogger("hive.pm_fleet_v2")
 
@@ -68,7 +68,7 @@ class KnowledgeDistiller:
         )
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with shared_client(timeout=60.0) as client:
                 r = await client.post(
                     f"{base}/chat/completions",
                     headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
@@ -202,7 +202,7 @@ async def execute_github_tool(name: str, args: dict[str, Any]) -> dict[str, Any]
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
     base = "https://api.github.com"
 
-    async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
+    async with shared_client(timeout=30.0, headers=headers) as client:
         if name == "github_list_prs":
             r = await client.get(
                 f"{base}/repos/{args['repo']}/pulls", params={"state": args.get("state", "open")}
@@ -253,7 +253,7 @@ async def execute_gitlab_tool(name: str, args: dict[str, Any]) -> dict[str, Any]
 
     headers = {"PRIVATE-TOKEN": token}
 
-    async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
+    async with shared_client(timeout=30.0, headers=headers) as client:
         if name == "gitlab_list_mrs":
             r = await client.get(
                 f"{base}/projects/{args['project_id']}/merge_requests",
