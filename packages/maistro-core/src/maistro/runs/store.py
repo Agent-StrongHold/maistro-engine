@@ -5,19 +5,19 @@ from typing import Any, Protocol, runtime_checkable
 
 from maistro.graph.definitions import Graph
 from maistro.projects.scope_store import ProjectScopeStore
-from maistro.runs.lifecycle import (
-    transition_attempt,
-    transition_node_run,
-    transition_run,
-)
+from maistro.runs.lifecycle import transition_attempt, transition_node_run, transition_run
 from maistro.runs.model import (
     TERMINAL_RUN_STATUSES,
+    AcceptedNodeOutcome,
     Attempt,
+    AttemptResult,
     AttemptStatus,
+    ExecutionLease,
     GraphSnapshot,
     NodeRun,
     Run,
     RunStatus,
+    evidence_values_equal,
 )
 
 
@@ -38,6 +38,29 @@ class RunIntegrityError(ValueError):
 
 
 class ActiveAttemptExists(RunIntegrityError):
+    pass
+
+
+def validate_accepted_outcome_against_attempt(
+    outcome: AcceptedNodeOutcome,
+    attempt: Attempt,
+) -> None:
+    """Require authoritative logical evidence to match one canonical persisted Attempt."""
+    expected = AttemptResult.from_attempt(attempt)
+    actual = outcome.attempt_result
+    if (
+        actual.attempt_id != expected.attempt_id
+        or actual.node_run_id != expected.node_run_id
+        or actual.ordinal != expected.ordinal
+        or actual.status is not expected.status
+        or actual.finished_at != expected.finished_at
+        or actual.error != expected.error
+        or not evidence_values_equal(actual.result, expected.result)
+    ):
+        raise RunIntegrityError("accepted outcome does not match its canonical persisted Attempt")
+
+
+class StaleExecutionFence(RunIntegrityError):
     pass
 
 
@@ -81,6 +104,7 @@ class RunStore(Protocol):
         at: datetime | None = None,
         result: object | None = None,
         error: str | None = None,
+        accepted_outcome: AcceptedNodeOutcome | None = None,
     ) -> NodeRun: ...
 
     async def create_attempt(
@@ -91,6 +115,7 @@ class RunStore(Protocol):
         executor_id: str = "",
         deadline_at: datetime | None = None,
         resume_checkpoint_id: str | None = None,
+        lease_holder: str | None = None,
     ) -> Attempt: ...
 
     async def get_attempt(self, attempt_id: str) -> Attempt | None: ...
@@ -106,16 +131,12 @@ class RunStore(Protocol):
         result: object | None = None,
         error: str | None = None,
         metrics: dict[str, object] | None = None,
+        fencing_token: str | None = None,
     ) -> Attempt: ...
 
 
 class InMemoryRunStore:
-    """Reference lifecycle store for canonical Run -> NodeRun -> Attempt state.
-
-    A Run store is always attached to the canonical Project scope store. Run
-    creation therefore validates the Graph's Project identity before the Graph
-    snapshot becomes durable execution identity.
-    """
+    """Reference lifecycle store for canonical Run -> NodeRun -> Attempt state."""
 
     def __init__(self, *, project_store: ProjectScopeStore) -> None:
         self._project_store = project_store
@@ -135,10 +156,8 @@ class InMemoryRunStore:
         provenance: dict[str, Any] | None = None,
     ) -> Run:
         await self._validate_graph_scope(graph)
-
         if parent_node_run_id is not None and parent_run_id is None:
             raise RunIntegrityError("parent_node_run_id requires parent_run_id")
-
         if parent_run_id is not None:
             parent = self._require_run(parent_run_id)
             if parent.workspace_id != graph.workspace_id:
@@ -152,7 +171,6 @@ class InMemoryRunStore:
                 parent_node_run = self._require_node_run(parent_node_run_id)
                 if parent_node_run.run_id != parent_run_id:
                     raise RunIntegrityError("parent_node_run_id does not belong to parent_run_id")
-
         run = Run(
             workspace_id=graph.workspace_id,
             project_id=graph.project_id,
@@ -188,11 +206,9 @@ class InMemoryRunStore:
         run = self._require_run(run_id)
         if run.status in TERMINAL_RUN_STATUSES:
             raise RunIntegrityError("cannot create NodeRun under a terminal Run")
-
         graph = run.graph.materialize()
         if not any(node.node_id == node_id for node in graph.nodes):
             raise RunIntegrityError(f"node_id {node_id!r} is not present in the Run Graph snapshot")
-
         ordinal = 1 + sum(node_run.run_id == run_id for node_run in self._node_runs.values())
         node_run = NodeRun(run_id=run_id, node_id=node_id, ordinal=ordinal)
         self._node_runs[node_run.node_run_id] = node_run
@@ -220,14 +236,21 @@ class InMemoryRunStore:
         at: datetime | None = None,
         result: object | None = None,
         error: str | None = None,
+        accepted_outcome: AcceptedNodeOutcome | None = None,
     ) -> NodeRun:
         node_run = self._require_node_run(node_run_id)
+        if accepted_outcome is not None:
+            if accepted_outcome.node_run_id != node_run_id:
+                raise RunIntegrityError("accepted outcome belongs to a different NodeRun")
+            attempt = self._require_attempt(accepted_outcome.attempt_result.attempt_id)
+            validate_accepted_outcome_against_attempt(accepted_outcome, attempt)
         updated = transition_node_run(
             node_run,
             target,
             at=at,
             result=result,
             error=error,
+            accepted_outcome=accepted_outcome,
         )
         self._node_runs[node_run_id] = updated
         return updated.model_copy(deep=True)
@@ -240,11 +263,11 @@ class InMemoryRunStore:
         executor_id: str = "",
         deadline_at: datetime | None = None,
         resume_checkpoint_id: str | None = None,
+        lease_holder: str | None = None,
     ) -> Attempt:
         node_run = self._require_node_run(node_run_id)
         if node_run.status in TERMINAL_RUN_STATUSES:
             raise RunIntegrityError("cannot create Attempt under a terminal NodeRun")
-
         existing = [
             attempt for attempt in self._attempts.values() if attempt.node_run_id == node_run_id
         ]
@@ -252,7 +275,6 @@ class InMemoryRunStore:
             attempt.status in {AttemptStatus.CREATED, AttemptStatus.RUNNING} for attempt in existing
         ):
             raise ActiveAttemptExists(f"NodeRun {node_run_id!r} already has an active Attempt")
-
         ordinal = max((attempt.ordinal for attempt in existing), default=0) + 1
         attempt = Attempt(
             node_run_id=node_run_id,
@@ -262,6 +284,16 @@ class InMemoryRunStore:
             deadline_at=deadline_at,
             resume_checkpoint_id=resume_checkpoint_id,
         )
+        if lease_holder is not None:
+            lease = ExecutionLease(
+                node_run_id=node_run_id,
+                attempt_id=attempt.attempt_id,
+                lease_epoch=ordinal,
+                holder=lease_holder,
+            )
+            attempt = Attempt.model_validate(
+                {**attempt.model_dump(mode="python"), "execution_lease": lease}
+            )
         self._attempts[attempt.attempt_id] = attempt
         return attempt.model_copy(deep=True)
 
@@ -288,8 +320,10 @@ class InMemoryRunStore:
         result: object | None = None,
         error: str | None = None,
         metrics: dict[str, object] | None = None,
+        fencing_token: str | None = None,
     ) -> Attempt:
         attempt = self._require_attempt(attempt_id)
+        self._validate_fence(attempt, fencing_token)
         updated = transition_attempt(
             attempt,
             target,
@@ -300,6 +334,14 @@ class InMemoryRunStore:
         )
         self._attempts[attempt_id] = updated
         return updated.model_copy(deep=True)
+
+    @staticmethod
+    def _validate_fence(attempt: Attempt, fencing_token: str | None) -> None:
+        lease = attempt.execution_lease
+        if lease is not None and fencing_token != lease.fencing_token:
+            raise StaleExecutionFence(
+                f"Attempt {attempt.attempt_id!r} update rejected by execution fence"
+            )
 
     async def _validate_graph_scope(self, graph: Graph) -> None:
         project = await self._project_store.get(graph.project_id)
@@ -337,4 +379,6 @@ __all__ = [
     "RunIntegrityError",
     "RunNotFound",
     "RunStore",
+    "StaleExecutionFence",
+    "validate_accepted_outcome_against_attempt",
 ]

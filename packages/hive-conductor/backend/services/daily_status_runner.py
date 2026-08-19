@@ -1,16 +1,14 @@
-"""Run the daily-status DAG and shape the result for the Daily Report
-frontend.
+"""Run the daily-status graph and shape the result for the Daily Report frontend.
 
-This is the Phase 4 proof-point that the substrate composes — instead of
-the Hive route polling Jira inline, it builds a DurableRunStore, registers
-the daily_status_seed via dag_registry, injects the per-user PAT + base
-URL, runs through run_durable_dag, and translates the result back into
-the response shape DailyReport.tsx already consumes. No frontend change
-required.
+The Hive registry still stores the historical editable DAG snapshot format. At
+this application boundary we convert that snapshot into the canonical Graph
+model, inject per-request Jira credentials, execute it through the canonical
+durable Run/NodeRun persistence path, and translate the result back into the
+response shape DailyReport.tsx already consumes.
 
-The legacy inline polling stays as a fallback for the case where the
-substrate is unavailable / the run fails — graceful degradation matters
-for an observability surface.
+The legacy inline polling stays as a fallback for the case where the substrate
+is unavailable or the run fails. Graceful degradation matters for an
+observability surface.
 """
 
 from __future__ import annotations
@@ -20,7 +18,8 @@ from typing import Any, ClassVar
 
 from maistro.container import build_node_resolver
 from maistro.graph.dag_registry import DagRegistry
-from maistro.graph.durable_runs import InMemoryDurableRunStore, RunStatus, run_durable_dag
+from maistro.graph.definitions import Edge, Graph, Node
+from maistro.graph.durable_runs import InMemoryDurableRunStore, RunStatus, run_durable_graph
 from maistro.graph.seeds import daily_status_seed
 
 logger = logging.getLogger(__name__)
@@ -32,10 +31,15 @@ _registry: DagRegistry | None = None
 # Module-level resolver: this app imports maistro-core pieces directly rather
 # than constructing a full Container, so build_node_resolver()'s no-arg
 # defaults (the shared usage log, an empty harness-adapter map) are what it
-# picks up -- the same pattern a full Container would wire, just reachable
-# without needing one. Falls back to the plain registry lookup
-# (`get_node(kind)()`) for kinds like jira.poll that need no special wiring.
+# picks up. The resolver receives the canonical Graph from run_durable_graph.
 _node_resolver = build_node_resolver()
+
+# The current Hive Daily Report route predates Workspace/Project middleware and
+# can still invoke this service without either scope id. The store used here is
+# per-request and in-memory, so this explicit compatibility scope cannot leak
+# durable records across users. Callers that have canonical ids should pass
+# them; Project middleware can remove this fallback when it lands.
+_FALLBACK_SCOPE_ID = "hive:daily-status"
 
 
 def _get_registry() -> DagRegistry:
@@ -43,9 +47,6 @@ def _get_registry() -> DagRegistry:
     global _registry
     if _registry is None:
         _registry = DagRegistry()
-        # Register the canonical PM-fleet daily-status seed under
-        # `dag:daily-status`. Subsequent re-imports are no-ops (the
-        # registry's version-bump path tolerates re-register).
         _registry.register(daily_status_seed())
     return _registry
 
@@ -53,9 +54,7 @@ def _get_registry() -> DagRegistry:
 def _inject_jira_credentials(
     dag: dict[str, Any], *, pat: str, base_url: str, flavor: str = "server"
 ) -> dict[str, Any]:
-    """Mutate (in-place) the daily-status DAG snapshot's jira_poll inputs to
-    include the per-request user PAT + base URL. The DAG snapshot itself
-    came from the registry's frozen copy; this is the per-call overlay."""
+    """Overlay per-request Jira credentials onto a copied registry snapshot."""
     for spec in dag.get("nodes", []):
         if spec.get("id") == "jira_poll":
             inputs = dict(spec.get("inputs", {}))
@@ -67,6 +66,78 @@ def _inject_jira_credentials(
     return dag
 
 
+def _canonical_graph_from_snapshot(
+    snapshot: dict[str, Any],
+    *,
+    workspace_id: str | None,
+    project_id: str | None,
+) -> Graph:
+    """Project the editable DagRegistry snapshot into the canonical Graph model."""
+    resolved_project_id = project_id or _FALLBACK_SCOPE_ID
+    resolved_workspace_id = workspace_id or resolved_project_id
+
+    nodes: list[Node] = []
+    for raw in snapshot.get("nodes", []):
+        node_id = str(raw.get("id") or "")
+        node_type = str(raw.get("kind") or "")
+        metadata = {
+            key: value
+            for key, value in raw.items()
+            if key not in {"id", "kind", "name", "config", "inputs", "outputs"}
+        }
+        nodes.append(
+            Node(
+                node_id=node_id,
+                node_type=node_type,
+                name=str(raw.get("name") or node_id),
+                parameters=dict(raw.get("config") or {}),
+                inputs=dict(raw.get("inputs") or {}),
+                outputs=dict(raw.get("outputs") or {}),
+                metadata=metadata,
+            )
+        )
+
+    edges: list[Edge] = []
+    for index, raw in enumerate(snapshot.get("edges", []), start=1):
+        from_node = str(raw.get("from_node") or raw.get("from_role") or "")
+        to_node = str(raw.get("to_node") or raw.get("to_role") or "")
+        metadata = {
+            key: value
+            for key, value in raw.items()
+            if key
+            not in {"id", "edge_id", "from_node", "from_role", "to_node", "to_role", "condition"}
+        }
+        edges.append(
+            Edge(
+                edge_id=str(raw.get("edge_id") or raw.get("id") or f"edge-{index}"),
+                from_node=from_node,
+                to_node=to_node,
+                condition=raw.get("condition"),
+                metadata=metadata,
+            )
+        )
+
+    entry_node = snapshot.get("entry_node") or snapshot.get("entry")
+    graph_metadata = {
+        key: value
+        for key, value in snapshot.items()
+        if key not in {"id", "name", "description", "nodes", "edges", "entry_node", "entry"}
+    }
+    if entry_node is not None:
+        graph_metadata["entry_node"] = str(entry_node)
+
+    return Graph(
+        graph_id=str(snapshot.get("id") or "daily-status"),
+        workspace_id=resolved_workspace_id,
+        project_id=resolved_project_id,
+        name=str(snapshot.get("name") or "Daily Status"),
+        description=str(snapshot.get("description") or ""),
+        nodes=nodes,
+        edges=edges,
+        metadata=graph_metadata,
+    )
+
+
 async def run_daily_status_dag(
     *,
     user_id: str | None,
@@ -74,27 +145,26 @@ async def run_daily_status_dag(
     pat: str,
     base_url: str,
     flavor: str = "server",
+    workspace_id: str | None = None,
 ) -> dict[str, Any]:
-    """Run the daily-status DAG with per-user credentials. Returns the JIRA
-    section shape that the existing daily_report route emits — `status`,
-    `issues`, `count`, plus a `source` field set to `"dag:daily-status"`
-    so the UI can tell the DAG-backed path apart from any legacy fallback.
-    """
+    """Run daily status and return the Jira section shape used by the frontend."""
     registry = _get_registry()
-    snapshot = dict(registry.get("daily-status").snapshot)  # shallow copy
-    # Deep enough to mutate the jira_poll node's inputs without touching
-    # the registry's frozen template.
+    snapshot = dict(registry.get("daily-status").snapshot)
     snapshot["nodes"] = [dict(n) for n in snapshot["nodes"]]
     _inject_jira_credentials(snapshot, pat=pat, base_url=base_url, flavor=flavor)
+    graph = _canonical_graph_from_snapshot(
+        snapshot,
+        workspace_id=workspace_id,
+        project_id=project_id,
+    )
 
     store = InMemoryDurableRunStore()
     try:
-        result = await run_durable_dag(
-            snapshot,
+        result = await run_durable_graph(
+            graph,
             store=store,
             node_resolver=_node_resolver,
-            user_id=user_id,
-            project_id=project_id,
+            actor_principal_id=user_id,
         )
     except Exception as exc:
         logger.warning("daily_status_dag_run_failed: %s", exc)
@@ -105,57 +175,47 @@ async def run_daily_status_dag(
             "source": "dag:daily-status",
         }
 
-    # Phase 5 Signal #5: fan every COMPLETED node into the metrics store
-    # so /v1/dag-runs/metrics aggregates this run's contribution to the
-    # node-kind histograms.
     try:
         from services.node_metrics_store import record_run_completion
 
         record_run_completion(result)
     except Exception as exc:
-        # metrics ingestion must never fail the user-facing daily report
         logger.warning("daily_status_metrics_ingest_failed: %s", exc)
 
     return _result_to_jira_section(result, base_url=base_url, flavor=flavor)
 
 
 def _result_to_jira_section(
-    result: Any,  # DurableRunRecord; typed loose to avoid the cross-package import
+    result: Any,
     *,
     base_url: str,
     flavor: str,
 ) -> dict[str, Any]:
-    """Translate the DAG run's per-node records into the response shape
-    DailyReport.tsx already consumes."""
-    by_id = {nr.node_id: nr for nr in result.node_records}
+    """Translate canonical Run/NodeRun state into the existing Jira response."""
+    by_id = {nr.node_id: nr for nr in result.node_runs}
 
     if result.status == RunStatus.FAILED:
-        # If jira_poll itself raised a PermissionError, surface the same
-        # "auth_failed" / "no_pat" shape the inline path emitted.
         jp = by_id.get("jira_poll")
-        if jp is not None and jp.error_code == "PermissionError":
+        jp_error = str(getattr(jp, "error", "") or "")
+        if jp_error.startswith("PermissionError:"):
+            detail = jp_error.partition(":")[2].strip() or "Jira authentication failed"
             return {
                 "status": "auth_failed",
-                "detail": jp.error_message or "Jira authentication failed",
+                "detail": detail,
                 "issues": [],
                 "source": "dag:daily-status",
             }
+        run_error = str(getattr(getattr(result, "run", None), "error", "") or "")
         return {
             "status": "error",
-            "detail": (result.error_message or f"daily-status run failed: {result.error_code}"),
+            "detail": run_error or "daily-status run failed",
             "issues": [],
             "source": "dag:daily-status",
         }
 
-    # Successful run — lift jira_poll's output for the issues list +
-    # filter for the kept count.
-    jp_out = (by_id.get("jira_poll") or _missing()).output or {}
-    filt_out = (by_id.get("jira_epic_filter") or _missing()).output or {}
+    jp_out = (by_id.get("jira_poll") or _missing()).result or {}
+    filt_out = (by_id.get("jira_epic_filter") or _missing()).result or {}
 
-    # The kept items have been formatted into a Markdown section appended
-    # to the run's blackboard at metadata["dashboard:daily-status"]; we
-    # return both the raw issues (for the section card) and the kept-Epic
-    # count for the headline.
     issues = []
     for raw in jp_out.get("issues") or []:
         issues.append(
@@ -179,10 +239,9 @@ def _result_to_jira_section(
 
 
 class _MissingNode:
-    """Sentinel for `by_id.get(...) or _missing()` — keeps the lookups
-    branch-free + None-safe."""
+    """None-safe sentinel for optional canonical NodeRun lookups."""
 
-    output: ClassVar[dict[str, Any]] = {}
+    result: ClassVar[dict[str, Any]] = {}
 
 
 def _missing() -> _MissingNode:
