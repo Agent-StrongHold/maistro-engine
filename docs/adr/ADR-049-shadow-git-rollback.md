@@ -3,7 +3,7 @@ id: ADR-049
 title: Agent file-edit rollback via shadow git
 repo: maistro-engine
 kind: adr
-status: Implemented
+status: Deprecated
 created: 2026-05-13
 substrate:
   - maistro-engine#ADR-018
@@ -24,9 +24,28 @@ owners:
 history:
   - status: Proposed
     date: 2026-05-13
+  - status: Deprecated
+    date: 2026-08-19
 ---
 
 # ADR-049: Agent file-edit rollback via shadow git
+
+> **Convergence note (2026-08-19).** This ADR was marked `Implemented` over
+> code that has no path from any process entry point, which the reachability
+> sweep in
+> [#360](https://github.com/Agent-StrongHold/maistro-engine/issues/360)
+> surfaced and
+> [#363](https://github.com/Agent-StrongHold/maistro-engine/issues/363)
+> catalogued. It shipped and was never connected. Its only importer is
+> ADR-052's `fan_in.py`, which is itself unreachable — a closed island of two
+> dead subsystems importing each other.
+>
+> Status moved `Implemented` → `Deprecated` rather than `Superseded`: nothing
+> replaces this design, and `Superseded` requires naming a successor document.
+> The code remains in the tree and in `quality/reachability-baseline.json`;
+> its removal belongs to the island-elimination stage of the convergence
+> effort.
+
 
 ## Context
 

@@ -30,6 +30,24 @@ history:
 
 # ADR-050: Tool reversibility taxonomy and compensator contract
 
+> **Convergence note (2026-08-19).** This ADR is marked `Implemented` over
+> code with no path from any process entry point — see
+> [#363](https://github.com/Agent-StrongHold/maistro-engine/issues/363). The
+> status is knowingly left unchanged rather than corrected, because neither
+> available transition is right yet. Tool reversibility belongs on the Binding
+> → Invocation path.
+>
+> The capability is still wanted, so `Deprecated` would be false; and
+> `Superseded` requires a `superseded-by`, but the design that replaces this —
+> the durable approval and policy path landed across
+> [#430](https://github.com/Agent-StrongHold/maistro-engine/pull/430) through
+> [#433](https://github.com/Agent-StrongHold/maistro-engine/pull/433) and
+> [#467](https://github.com/Agent-StrongHold/maistro-engine/pull/467) — has no
+> ADR of its own. Both target states are terminal, so choosing wrong now
+> forecloses the other. Writing that missing ADR and superseding this one is
+> boundary-enforcement work, not a bookkeeping change.
+
+
 ## Context
 
 `security/sentinel` enforces tool-call policy today; ADR-038 ships retry / circuit-breaker / fallback / idempotency-key contract. Neither classifies tool calls by side-effect nature. Without a taxonomy, every tool's failure-mode and rollback story is bespoke and substrate cannot reason about which calls are safe to retry, which need approval (ADR-051), and which need a compensator on rollback.

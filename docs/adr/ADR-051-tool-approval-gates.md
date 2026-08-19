@@ -31,6 +31,24 @@ history:
 
 # ADR-051: Tool approval gates — plan preview, impact-weighted escalation, learned trust
 
+> **Convergence note (2026-08-19).** This ADR is marked `Implemented` over
+> code with no path from any process entry point — see
+> [#363](https://github.com/Agent-StrongHold/maistro-engine/issues/363). The
+> status is knowingly left unchanged rather than corrected, because neither
+> available transition is right yet. Tool approval is now enforced at the
+> Invocation boundary by a durable approval store.
+>
+> The capability is still wanted, so `Deprecated` would be false; and
+> `Superseded` requires a `superseded-by`, but the design that replaces this —
+> the durable approval and policy path landed across
+> [#430](https://github.com/Agent-StrongHold/maistro-engine/pull/430) through
+> [#433](https://github.com/Agent-StrongHold/maistro-engine/pull/433) and
+> [#467](https://github.com/Agent-StrongHold/maistro-engine/pull/467) — has no
+> ADR of its own. Both target states are terminal, so choosing wrong now
+> forecloses the other. Writing that missing ADR and superseding this one is
+> boundary-enforcement work, not a bookkeeping change.
+
+
 ## Context
 
 Sentinel enforces tool-call policy at the call site (`allow`/`deny`); it does not surface for human approval. Per ADR-050, `irreversible` tool calls need human approval before execution. Per-call synchronous prompts disrupt long tasks; plain per-task batch approval doesn't surface high-stakes calls. ADR-028 is process-level privilege separation, not task-level human-in-the-loop.

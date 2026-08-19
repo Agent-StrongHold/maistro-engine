@@ -27,6 +27,19 @@ owners:
 
 # SPEC-251: Outbound delivery gateway — Channel protocol, registry, idempotent dispatch
 
+> **Convergence note (2026-08-19).** This spec is marked `Implemented` over
+> code with no path from any process entry point — see
+> [#363](https://github.com/Agent-StrongHold/maistro-engine/issues/363). It
+> tracks ADR-047, now `Deprecated`.
+>
+> The status is left unchanged because the spec lifecycle has no way to
+> express this. From `Implemented` a spec may only become `Superseded`, which
+> requires a `superseded-by`, and no successor document exists. There is no
+> `Deprecated` state for specs as there is for ADRs. Correcting this needs
+> either the successor spec or a lifecycle change, so the note carries the
+> truth in the meantime.
+
+
 ## Context
 
 ADR-047 asks for a substrate-blessed way for an agent to deliver an artifact over an outbound

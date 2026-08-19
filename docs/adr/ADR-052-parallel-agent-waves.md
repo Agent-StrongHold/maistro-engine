@@ -3,7 +3,7 @@ id: ADR-052
 title: Parallel agent waves — per-wave branch isolation and fan-in merge
 repo: maistro-engine
 kind: adr
-status: Implemented
+status: Deprecated
 created: 2026-05-13
 substrate:
   - maistro-engine#ADR-049
@@ -26,9 +26,29 @@ owners:
 history:
   - status: Proposed
     date: 2026-05-13
+  - status: Deprecated
+    date: 2026-08-19
 ---
 
 # ADR-052: Parallel agent waves — per-wave branch isolation and fan-in merge
+
+> **Convergence note (2026-08-19).** This ADR was marked `Implemented` over
+> code that has no path from any process entry point, which the reachability
+> sweep in
+> [#360](https://github.com/Agent-StrongHold/maistro-engine/issues/360)
+> surfaced and
+> [#363](https://github.com/Agent-StrongHold/maistro-engine/issues/363)
+> catalogued. It shipped and was never connected. It specifies per-wave git
+> branch isolation and fan-in merge for file-editing sub-agents, built on
+> ADR-049's shadow workspace. That is a filesystem-isolation concern, not the
+> traversal concern ADR-062 owns, so ADR-062 does not replace it.
+>
+> Status moved `Implemented` → `Deprecated` rather than `Superseded`: nothing
+> replaces this design, and `Superseded` requires naming a successor document.
+> The code remains in the tree and in `quality/reachability-baseline.json`;
+> its removal belongs to the island-elimination stage of the convergence
+> effort.
+
 
 ## Context
 
