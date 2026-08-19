@@ -22,7 +22,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from maistro.agents.spec.agent_spec import AgentSpec
-from maistro.capabilities.binding import Binding
+from maistro.capabilities.binding import Binding, ResolvedCapabilityProvider
 from maistro.capabilities.governed_invocation import GovernedInvocationExecutionService
 from maistro.capabilities.invocation import CapabilityUnavailable, EffectNotApplied
 from maistro.capabilities.providers.harness_safety import ActionGate, SafeHarnessRunner
@@ -140,8 +140,22 @@ class HarnessSessionManager:
 
         executed = False
 
-        async def executor(provider: SafeHarnessRunner, request: Any) -> dict[str, Any]:
+        async def executor(provider: ResolvedCapabilityProvider, request: Any) -> dict[str, Any]:
             nonlocal executed
+            # Typed as ResolvedCapabilityProvider, not SafeHarnessRunner, because
+            # that is what ProviderExecutor may pass: callable parameters are
+            # contravariant, so narrowing the declaration here is unsound even
+            # though `resolver` above only ever yields a SafeHarnessRunner. The
+            # isinstance check turns that wiring assumption into a checked
+            # invariant — if some future resolver returns a raw provider, this
+            # raises instead of silently bypassing Warden and the ActionGate,
+            # which is the whole point of routing harness turns through the safe
+            # wrapper.
+            if not isinstance(provider, SafeHarnessRunner):
+                raise TypeError(
+                    "harness Invocation must execute through SafeHarnessRunner; "
+                    f"got {type(provider).__name__}"
+                )
             if not isinstance(request, list):
                 raise TypeError("harness Invocation request must be a message list")
             executed = True
