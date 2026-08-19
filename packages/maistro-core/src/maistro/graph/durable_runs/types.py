@@ -9,7 +9,12 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from maistro.graph.execution_state import GraphEdgeDecision, GraphExecutionState
-from maistro.graph.traversal_commit import TraversalCommit, accepted_outcome_id, edge_decision_id
+from maistro.graph.traversal_commit import (
+    TraversalCheckpoint,
+    TraversalCommit,
+    accepted_outcome_id,
+    edge_decision_id,
+)
 from maistro.runs.model import TERMINAL_RUN_STATUSES, Attempt, NodeRun, Run, RunStatus
 
 
@@ -42,10 +47,68 @@ def _validate_graph_links(run: Run, graph_state: GraphExecutionState) -> None:
         raise ValueError("active graph frontier must reference nodes in the Run Graph snapshot")
 
 
+def _validate_traversal_checkpoints(
+    *,
+    run: Run,
+    node_runs: tuple[NodeRun, ...],
+    checkpoints: tuple[TraversalCheckpoint, ...],
+) -> dict[str, TraversalCheckpoint]:
+    if not checkpoints:
+        return {}
+    if [checkpoint.checkpoint_sequence for checkpoint in checkpoints] != list(
+        range(1, len(checkpoints) + 1)
+    ):
+        raise ValueError("TraversalCheckpoint sequences must be consecutive from one")
+
+    node_run_ids = {node_run.node_run_id for node_run in node_runs}
+    checkpoints_by_id: dict[str, TraversalCheckpoint] = {}
+    for checkpoint in checkpoints:
+        if checkpoint.run_id != run.run_id:
+            raise ValueError("every TraversalCheckpoint must belong to the persisted Run")
+        if checkpoint.graph_snapshot_hash != run.graph.content_hash:
+            raise ValueError("TraversalCheckpoint graph snapshot must match the Run snapshot")
+        if any(
+            node_run_id not in node_run_ids
+            for node_run_id in checkpoint.ordered_source_node_run_ids
+        ):
+            raise ValueError("TraversalCheckpoint source NodeRun must be persisted")
+        if checkpoint.traversal_checkpoint_id in checkpoints_by_id:
+            raise ValueError("TraversalCheckpoint identities must be unique")
+        checkpoints_by_id[checkpoint.traversal_checkpoint_id] = checkpoint
+    return checkpoints_by_id
+
+
+def _checkpoint_bridge(
+    commit: TraversalCommit,
+    checkpoints_by_id: dict[str, TraversalCheckpoint],
+    referenced_checkpoint_ids: set[str],
+) -> TraversalCheckpoint | None:
+    if commit.checkpoint_id is None:
+        return None
+    checkpoint = checkpoints_by_id.get(commit.checkpoint_id)
+    if checkpoint is None:
+        raise ValueError("TraversalCommit checkpoint bridge must be persisted")
+    if commit.checkpoint_id in referenced_checkpoint_ids:
+        raise ValueError("TraversalCheckpoint cannot bridge more than one TraversalCommit")
+    if checkpoint.state_hash != commit.prior_state_hash:
+        raise ValueError("TraversalCommit prior state must match its checkpoint bridge")
+    if (
+        checkpoint.ordered_source_node_run_ids
+        and checkpoint.ordered_source_node_run_ids != commit.ordered_source_node_run_ids
+    ):
+        raise ValueError("TraversalCommit checkpoint sources must match advancing NodeRuns")
+    if checkpoint.checkpointed_at > commit.committed_at:
+        raise ValueError("TraversalCommit cannot precede its checkpoint bridge")
+    referenced_checkpoint_ids.add(commit.checkpoint_id)
+    return checkpoint
+
+
 def _validate_commit_chain(
     run: Run,
     commit: TraversalCommit,
     previous: TraversalCommit | None,
+    checkpoints_by_id: dict[str, TraversalCheckpoint],
+    referenced_checkpoint_ids: set[str],
 ) -> None:
     if commit.run_id != run.run_id:
         raise ValueError("every TraversalCommit must belong to the persisted Run")
@@ -54,8 +117,19 @@ def _validate_commit_chain(
     expected_parent = previous.traversal_commit_id if previous is not None else None
     if commit.prior_commit_id != expected_parent:
         raise ValueError("TraversalCommit history must form one parent-linked chain")
+
+    checkpoint = _checkpoint_bridge(
+        commit,
+        checkpoints_by_id,
+        referenced_checkpoint_ids,
+    )
+    if checkpoint is not None:
+        return
     if previous is not None and commit.prior_state_hash != previous.resulting_state_hash:
-        raise ValueError("adjacent TraversalCommits must link resulting and prior state hashes")
+        raise ValueError(
+            "adjacent TraversalCommits must link resulting and prior state hashes "
+            "or persist a TraversalCheckpoint bridge"
+        )
 
 
 def _commit_source_runs(
@@ -102,6 +176,7 @@ def _validate_traversal_commits(
     run: Run,
     graph_state: GraphExecutionState,
     node_runs: tuple[NodeRun, ...],
+    checkpoints_by_id: dict[str, TraversalCheckpoint],
     commits: tuple[TraversalCommit, ...],
 ) -> None:
     if not commits:
@@ -114,9 +189,16 @@ def _validate_traversal_commits(
         edge_decision_id(decision): decision for decision in graph_state.edge_decisions
     }
     previous: TraversalCommit | None = None
+    referenced_checkpoint_ids: set[str] = set()
 
     for commit in commits:
-        _validate_commit_chain(run, commit, previous)
+        _validate_commit_chain(
+            run,
+            commit,
+            previous,
+            checkpoints_by_id,
+            referenced_checkpoint_ids,
+        )
         source_runs, source_ids = _commit_source_runs(commit, node_runs_by_id)
         _validate_commit_outcomes(commit, source_runs)
         _validate_commit_decisions(commit, decisions_by_id, source_ids)
@@ -138,6 +220,7 @@ class DurableRunRecord(BaseModel):
     graph_state: GraphExecutionState
     node_runs: tuple[NodeRun, ...] = Field(default_factory=tuple)
     attempts: tuple[Attempt, ...] = Field(default_factory=tuple)
+    traversal_checkpoints: tuple[TraversalCheckpoint, ...] = Field(default_factory=tuple)
     traversal_commits: tuple[TraversalCommit, ...] = Field(default_factory=tuple)
     resume_at: datetime | None = None
     version: int = Field(default=0, ge=0)
@@ -147,10 +230,16 @@ class DurableRunRecord(BaseModel):
         _validate_graph_links(self.run, self.graph_state)
         node_run_ids = _validate_node_run_links(self.run, self.node_runs)
         _validate_attempt_links(self.attempts, node_run_ids)
+        checkpoints_by_id = _validate_traversal_checkpoints(
+            run=self.run,
+            node_runs=self.node_runs,
+            checkpoints=self.traversal_checkpoints,
+        )
         _validate_traversal_commits(
             run=self.run,
             graph_state=self.graph_state,
             node_runs=self.node_runs,
+            checkpoints_by_id=checkpoints_by_id,
             commits=self.traversal_commits,
         )
         return self
@@ -173,6 +262,10 @@ class DurableRunRecord(BaseModel):
         return active[0] if active else None
 
     @property
+    def latest_traversal_checkpoint(self) -> TraversalCheckpoint | None:
+        return self.traversal_checkpoints[-1] if self.traversal_checkpoints else None
+
+    @property
     def latest_traversal_commit(self) -> TraversalCommit | None:
         return self.traversal_commits[-1] if self.traversal_commits else None
 
@@ -192,10 +285,12 @@ if TYPE_CHECKING:
 
     def _vulture_pydantic_contract_usage(record: DurableRunRecord) -> None:
         _ = record._validate_links
+        _ = record.latest_traversal_checkpoint
         _ = record.latest_traversal_commit
 
     _: object
     _ = _vulture_pydantic_contract_usage
+    _ = _validate_traversal_checkpoints
     _ = _validate_traversal_commits
 
 
