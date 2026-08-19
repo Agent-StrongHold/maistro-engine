@@ -22,6 +22,10 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: uv sync --locked --extra dev --extra bootstrap
+      - name: Produce exact Ruff-formatted durable record source
+        run: |
+          uv run ruff format packages/maistro-core/src/maistro/graph/durable_runs/types.py
+          cp packages/maistro-core/src/maistro/graph/durable_runs/types.py formatted-types.py
       - name: Run maistro-core tests and retain output
         id: core-tests
         shell: bash
@@ -58,6 +62,7 @@ jobs:
           path: |
             core-tests.log
             core-tests.xml
+            formatted-types.py
           if-no-files-found: error
       - name: Preserve test result
         if: always()
