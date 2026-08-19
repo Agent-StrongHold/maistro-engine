@@ -67,9 +67,6 @@ maistro-core node IDs.
 PR #447 adds six maistro-core node IDs covering checkpoint-bridged traversal
 history, reuse of frozen execution state across transitions, and rejection of
 execution continuation after an accepted logical completion.
-PR #430 adds five maistro-core node IDs covering Binding/ResolvedBinding
-provenance, durable Invocation lifecycle, retry-safe logical effect identity,
-and completed-effect deduplication across Attempts.
 Stream 1 adds 99 maistro-core node IDs for the canonical Project,
 Run/NodeRun/Attempt, runtime, persistence, and execution-service contracts.
 Stream 6 adds five provider-parity node IDs.
@@ -90,16 +87,16 @@ unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 6206 | `ci.yml` |
+| `packages/maistro-core/tests` | 6218 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
 | `packages/maistro-turing/tests` | 176 | `ci.yml` |
 | `packages/maistro-design/tests` | 156 | `ci.yml` |
-| `packages/maistro-bootstrap/tests` | 123 | `ci.yml` |
+| `packages/maistro-bootstrap/tests` | 125 | `ci.yml` |
 | `packages/maistro-canvas/tests` | 124 | `ci.yml` |
 | `packages/maistro-turing/backend/tests` | 26 | `ci.yml` (own invocation) |
-| `tests/` (root) | 641 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
+| `tests/` (root) | 663 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
 | `formal/` | 417 | `formal-conformance.yml` + `quality.yml` Pillar 2 |
 | `packages/hive-conductor/backend/tests` | 1233 | `ci.yml` (bare python) |
 | `packages/hive-conductor/tests/e2e` | 24 | `ci.yml` `hive-conductor-e2e` (docker-compose) |
