@@ -193,7 +193,14 @@ class GovernedInvocationExecutionService:
         binding: Binding,
         context: InvocationPolicyContext,
         verdict: PolicyVerdict,
-        causation_id: str | None = None,
+        # "" and not None: EventEnvelope.causation_id is a plain `str` field on a
+        # dataclass, so it does not validate, and the event store's column is
+        # `causation_id TEXT NOT NULL DEFAULT ''`. Defaulting to None let the
+        # first policy event of every invocation (the uncaused one, from the
+        # `invoke` entry path) carry a None straight through construction and
+        # into an INSERT that would violate NOT NULL. In-memory stores never
+        # noticed; a SQL-backed one would fail on the common path.
+        causation_id: str = "",
     ) -> EventEnvelope:
         return await self._events.append(
             EventEnvelope(
