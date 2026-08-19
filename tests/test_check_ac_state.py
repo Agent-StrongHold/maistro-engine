@@ -127,3 +127,85 @@ class TestConfiguredRoots:
         assert roots, "testpaths resolved to nothing"
         assert all(r.is_absolute() for r in roots)
         assert not any(r == check.ROOT / "packages" for r in roots)
+
+
+GHERKIN_SPEC = """
+```gherkin
+Feature: Example
+
+  @AC-1
+  Scenario: A tagged scenario with an outcome
+    Given a precondition
+    When something happens
+    Then something observable is true
+
+  @AC-2 @slow
+  Scenario: Extra tags do not confuse the id
+    Given a precondition
+    Then it holds
+
+  @AC-1
+  Scenario: A second scenario for the same criterion
+    Given another precondition
+    Then it also holds
+
+  Scenario: An untagged scenario is not addressable
+    Given a precondition
+    Then it holds
+
+  @AC-3
+  Scenario: No Then, so nothing falsifiable
+    Given a precondition
+    When something happens
+```
+"""
+
+
+class TestGherkin:
+    def test_tags_are_the_identity_not_scenario_names(self, check):
+        """Names get reworded; a reworded name would silently break the binding
+        to the test claiming it, dropping the criterion to `declared` with
+        nothing saying why."""
+        tagged, _, errors = check.gherkin_criteria(GHERKIN_SPEC)
+        assert not errors
+        assert set(tagged) == {"AC-1", "AC-2", "AC-3"}
+
+    def test_one_criterion_may_have_several_scenarios(self, check):
+        """A table of cases plus an edge case is still one criterion. Keying a
+        single scenario per tag drops all but the last and reports a smaller
+        corpus than exists."""
+        tagged, _, _ = check.gherkin_criteria(GHERKIN_SPEC)
+        assert len(tagged["AC-1"]) == 2
+
+    def test_an_untagged_scenario_is_reported_not_silently_dropped(self, check):
+        _, untagged, _ = check.gherkin_criteria(GHERKIN_SPEC)
+        assert untagged == ["An untagged scenario is not addressable"]
+
+    def test_a_scenario_with_no_then_states_no_observable_outcome(self, check):
+        tagged, _, _ = check.gherkin_criteria(GHERKIN_SPEC)
+        assert tagged["AC-3"][0]["has_outcome"] is False
+        assert tagged["AC-1"][0]["has_outcome"] is True
+
+    def test_a_block_without_a_feature_line_still_parses(self, check):
+        """Most of the corpus writes bare `Scenario:` blocks with no Feature."""
+        tagged, _, errors = check.gherkin_criteria(
+            "```gherkin\n@AC-9\nScenario: Bare\n  Given x\n  Then y\n```"
+        )
+        assert not errors
+        assert set(tagged) == {"AC-9"}
+
+    def test_a_malformed_block_is_an_error_not_an_exception(self, check):
+        """An unenforced convention drifts; the gate must survive the drift it
+        exists to report."""
+        _, _, errors = check.gherkin_criteria(
+            "```gherkin\nScenario: Broken\n  Given x\n    bare indented prose\n```"
+        )
+        assert len(errors) == 1
+
+    def test_the_committed_corpus_has_no_new_parse_failures(self, check):
+        """A floor, deliberately: the four known-bad blocks are fixed in this
+        change, so the corpus parses clean and any regression is visible."""
+        specs = check.collect_specs(check.scan_markers([]), set(), None)
+        adrs = check.collect_adrs(specs, {}, set(), None)
+        bad = [d["id"] for d in (*specs, *adrs) if d["gherkin_parse_errors"]]
+        assert bad == []

@@ -56,6 +56,7 @@ later regression.
 | architecture fitness | floor | zero violations | a forbidden cross-layer dependency |
 | Hypothesis conformance | floor | zero falsifying examples | a property violation in `formal/` |
 | acceptance-criterion state | report only | `quality/ac-state.json` | nothing yet — see below |
+| Gherkin well-formedness | floor | zero parse failures | an acceptance-criteria block the Gherkin grammar rejects |
 
 Vulture is gated twice on purpose. `quality.yml` keeps a cheap total-count
 ceiling; `vulture-ratchet.yml` pins each rule's exact finding set by count and
@@ -100,6 +101,39 @@ Two counts are reported separately and must not be merged:
   criteria that fall short. Its own artefacts refute it.
 - **unverifiable** — the document claims `Implemented` and has nothing to
   measure yet. Unproven, not refuted.
+
+## Criteria are written in Gherkin
+
+Not a new convention — the existing one, finally enforced. 11 documents already
+carried 224 `Scenario:` blocks in ```gherkin fences, and `pytest-bdd` was
+already a declared dependency of hive-conductor. Nothing read any of it: no step
+definitions, no `.feature` files, no runner. Another built-but-never-wired
+subsystem, this one inside the acceptance-criteria machinery itself.
+
+So criteria are Gherkin, parsed with the real grammar rather than a regex —
+the point of adopting a standard is that its own tooling decides what is
+well-formed. That buys three things a prose bullet does not:
+
+- **A structure that can be checked.** A `Scenario` with no `Then` states no
+  observable outcome, so nothing about it is falsifiable. The report counts
+  those separately from criteria that merely lack a test.
+- **Tables instead of repetition.** `Scenario Outline` with an `Examples` table
+  states a rule and its cases once. Four near-identical prose bullets become one
+  criterion with four rows.
+- **A path to executable criteria.** Valid Gherkin can later be bound with
+  `pytest-bdd` without rewriting anything. That is deliberately *not* done here:
+  step definitions are a large glue layer, the repo has 8,700 plain pytest
+  tests, and the marker binding already works. The option is kept open, not
+  taken.
+
+A criterion's identity is a Gherkin **tag** — `@AC-3` above the scenario — never
+the scenario's name. Names get reworded, and a reworded name would silently
+break the binding to the test claiming it: the criterion would drop back to
+`declared` with nothing saying why. One criterion may carry several scenarios.
+
+Bullet-form `**AC-N**` criteria still count while the corpus converges, and the
+report says which form each spec uses so the progress is visible rather than
+normalised away.
 
 Report-only for now: nothing fails a build, and no status is rewritten. Most of
 the corpus is still prose-only, so the honest first pass is finding out what is

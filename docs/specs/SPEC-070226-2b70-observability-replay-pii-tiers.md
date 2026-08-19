@@ -155,37 +155,106 @@ code calls `litellm` directly, so the grep rule can be added to ci.yml at wiring
 
 ## Acceptance criteria
 
-- [x] **AC-1** Every LLM/tool call through the proxies writes a `ReplayEvent` carrying the
-      active ADR-037 `trace_id`/`span_id` and a `seq` that is monotonic per trace and
-      *shared* between the LLM and tool proxies, so interleaved calls replay in the order
-      they were made rather than in two independent sequences.
-- [x] **AC-2** `replay(trace_id)` yields events in original `seq` order, for any
-      interleaving of writes (property test over generated event sequences).
-- [x] **AC-3** Re-running an orchestration path in replay mode never invokes the real LLM
-      or tool, asserted via a poisoned real client that raises if touched.
-- [x] **AC-4** A request during replay that diverges from the recording raises
-      `ReplayDivergenceError` naming the `seq` and both hashes. Divergence covers a changed
-      request, a swapped call kind, and an exhausted trace — the three ways a replay can
-      stop corresponding to its recording.
-- [x] **AC-5** `sensitive`-tagged payloads are readable only via the scoped read path, and
-      each such read writes an `AccessAuditRecord`. Reading one that does not exist raises
-      rather than returning empty.
-- [x] **AC-6** `secret`-tagged calls persist hash + metadata only: no payload bytes appear
-      in any stored field (property test over generated payloads, including payloads
-      chosen to collide with metadata field names).
-- [x] **AC-7** The PII detector flags a `normal` event containing an email, card, or
-      secret-shaped token: it raises `UnexpectedPIIError` in dev mode, and in prod mode
-      redacts a *copy* — leaving the caller's object unmutated — and emits
-      `pii.unexpected_match`. It does not run on `sensitive` payloads, which are already
-      sealed.
-- [ ] **AC-8** Direct `litellm` invocation in engine code fails CI, and an agent wired with
-      a non-proxy client fails registration. *(Deferred to container/agent-factory wiring
-      plus a ci.yml grep rule — see wiring status above. Deliberately unticked: no test
-      claims it, and the ladder reports it as `declared`.)*
-- [x] **AC-9** Recording never blocks the hot path at `normal` tier: submission returns
-      without awaiting the write, a full buffer drops records and increments
-      `observability.record_dropped`, and `sensitive`/`secret` writes are never silently
-      dropped — those raise instead.
+```gherkin
+Feature: Replayable LLM/tool proxies and PII sensitivity-tier routing
+
+  @AC-1
+  Scenario: Recorded calls carry trace context and one shared sequence
+    Given an LLM proxy and a tool proxy sharing a trace
+    When calls are made alternately through both
+    Then every ReplayEvent carries the active trace_id and span_id
+    And the seq numbers are monotonic across both proxies, not per-proxy
+    And each event's request hash is a canonical sha256 of the request
+
+  @AC-2
+  Scenario: Replay yields events in their original order
+    Given a recorded trace of arbitrarily interleaved calls
+    When the trace is replayed
+    Then the events are yielded in original seq order
+
+  @AC-3
+  Scenario: Replay never reaches the real client
+    Given a recorded trace and a real client that raises if called
+    When the orchestration path is re-run in replay mode
+    Then the recorded responses are served
+    And the real client is never invoked
+
+  @AC-4
+  Scenario Outline: A replay that stops matching its recording raises
+    Given a recorded trace
+    When the replayed call <divergence>
+    Then ReplayDivergenceError is raised naming the seq and both hashes
+
+    Examples:
+      | divergence                       |
+      | sends a changed request          |
+      | swaps the call kind              |
+      | runs past the end of the trace   |
+
+  @AC-5
+  Scenario: Sensitive payloads are readable only through the audited path
+    Given a call recorded at the sensitive tier
+    When its payload is read through the scoped read path
+    Then the payload is returned
+    And an AccessAuditRecord is written for that read
+    But reading a sensitive payload that does not exist raises
+
+  @AC-6
+  Scenario: Secret payloads persist as hash and metadata only
+    Given a call recorded at the secret tier
+    When the stored record is examined for any generated payload
+    Then no payload bytes appear in any stored field
+    And replaying it raises ReplayPayloadUnavailableError
+
+  @AC-7
+  Scenario Outline: PII in a normal-tier payload is caught
+    Given the PII detector in <mode> mode
+    When a normal-tier event containing <token> is recorded
+    Then it <behaviour>
+
+    Examples:
+      | mode | token               | behaviour                                          |
+      | dev  | an email address    | raises UnexpectedPIIError                          |
+      | dev  | a secret-shaped key | raises UnexpectedPIIError                          |
+      | prod | an email address    | redacts a copy and emits pii.unexpected_match      |
+
+  @AC-7
+  Scenario: The detector leaves the caller's object alone and skips sealed tiers
+    Given the PII detector in prod mode
+    When a normal-tier payload containing an email is recorded
+    Then the caller's own object is not mutated
+    And a sensitive-tier payload is not scanned at all, being already sealed
+
+  @AC-8
+  Scenario: Non-proxy LLM access is impossible
+    Given engine code that calls litellm directly
+    When CI runs
+    Then the build fails
+    And an agent wired with a non-proxy client fails registration
+
+  @AC-9
+  Scenario Outline: Recording never blocks the hot path
+    Given a record writer whose buffer is full
+    When a <tier>-tier record is submitted
+    Then it <behaviour>
+
+    Examples:
+      | tier      | behaviour                                                  |
+      | normal    | is dropped, incrementing observability.record_dropped      |
+      | sensitive | raises rather than being silently dropped                  |
+      | secret    | raises rather than being silently dropped                  |
+
+  @AC-9
+  Scenario: Submission returns without waiting for the write
+    Given a record writer with a slow backing store
+    When a normal-tier record is submitted
+    Then submission returns without awaiting the write
+    And a later flush persists the buffered events
+```
+
+> **AC-8 is deliberately unproven.** It needs container/agent-factory wiring
+> plus a ci.yml grep rule — see the wiring status above. No test claims it, so
+> the ladder reports it as `declared` and holds this spec's tier there.
 
 ## Testing
 

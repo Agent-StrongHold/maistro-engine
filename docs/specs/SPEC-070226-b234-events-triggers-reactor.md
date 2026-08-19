@@ -201,25 +201,61 @@ The `(trigger_id, event_id)` unique key ensures a handler is invoked at most onc
 
 ## Acceptance criteria
 
-- [x] **AC-1** Every event emitted is persisted to the event log before any handler sees
-      it, for any sequence of emissions (property: no lost events), with append-assigned
-      monotonic ids and ascending read order. Both the in-memory and SQLite backends
-      satisfy the same contract, asserted by running the suite against each. *(On-disk
-      restart durability is a further claim this does not make: the SQLite fixture is
-      `:memory:`.)*
-- [x] **AC-2** A trigger pattern matches on event-type segments, not substrings:
-      `agent.*` matches `agent.created` and not `task.created`, and not `agent.sub.created`
-      — one segment, not any suffix.
-- [x] **AC-3** A handler is invoked exactly once per event: an invocation record is claimed
-      before the call, so a crash and restart mid-handler replays no duplicate (test
-      simulates the crash by abandoning a claimed invocation and re-running the processor).
-- [x] **AC-4** A failed handler is retried up to 3 times, with backoff paced by reactor tick
-      cadence rather than an in-loop sleep, and is marked terminally failed on the 4th —
-      never retried forever.
-- [ ] **AC-5** An event query API (`GET /events?event_type=...&since=...`) returns paginated
-      results. *(`EventLogStore.query()` supports this at store level; the HTTP route
-      belongs in maistro-server / hive-conductor and is not wired. Deliberately unticked:
-      the ladder reports it as `declared`.)*
+```gherkin
+Feature: Durable event log with idempotent replay
+
+  @AC-1
+  Scenario Outline: Every emitted event is persisted before any handler sees it
+    Given an event log backed by <backend>
+    When a sequence of events is emitted
+    Then every event is readable from the log
+    And each carries an append-assigned id greater than the one before it
+    And reads return them in ascending id order
+
+    Examples:
+      | backend   |
+      | in-memory |
+      | sqlite    |
+
+  @AC-2
+  Scenario Outline: Trigger patterns match on segments, not substrings
+    Given a trigger registered for pattern "<pattern>"
+    When an event of type "<event_type>" is emitted
+    Then the trigger <outcome>
+
+    Examples:
+      | pattern | event_type        | outcome        |
+      | agent.* | agent.created     | fires          |
+      | agent.* | task.created      | does not fire  |
+      | agent.* | agent.sub.created | does not fire  |
+
+  @AC-3
+  Scenario: A handler is invoked exactly once per event across a crash
+    Given a trigger whose handler has claimed an invocation for an event
+    When the process dies mid-handler and the processor runs again
+    Then the handler is not invoked a second time for that event
+    And the invocation record still names its terminal status
+
+  @AC-4
+  Scenario: A failing handler is retried three times and then given up on
+    Given a handler that raises on every call
+    When the processor runs until the invocation settles
+    Then the handler is called no more than 4 times in total
+    And the invocation ends in a terminal failed status
+    And the backoff is paced by reactor ticks rather than an in-loop sleep
+
+  @AC-5
+  Scenario: Events are queryable over HTTP
+    Given events in the log spanning several types and times
+    When a client requests GET /events with event_type and since filters
+    Then it receives the matching events, paginated
+```
+
+> **AC-5 is deliberately unproven.** `EventLogStore.query()` supports this at
+> store level; the HTTP route belongs in maistro-server / hive-conductor and is
+> not wired. No test claims it, so the ladder reports it as `declared` and holds
+> this spec's tier there — which is the accurate reading, not a gap in the
+> measurement.
 
 ## Testing
 

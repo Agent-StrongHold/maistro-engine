@@ -83,28 +83,78 @@ requires for audit value.
 
 ## Acceptance criteria
 
-The first four record what the scaffolding actually does; the remaining six are the
-gap against ADR-037 and are deliberately unticked. They carry no `ac-modules` entry
-because there is no module to point at yet — the ladder reports them as `declared`,
-which is the honest reading of "named in an ADR, not built".
+The first four record what the scaffolding actually does. AC-5 through AC-10 are
+the gap against ADR-037: they carry no `ac-modules` entry because there is no
+module to point at yet, so the ladder reports them as `declared` — the honest
+reading of "named in an ADR, not built".
 
-- [x] **AC-1** A logging module configures structlog with request-scoped context that is
-      bound per request and does not leak between concurrent requests.
-- [x] **AC-2** A metrics registry exposes counters, gauges, and histograms, and re-registering
-      the same metric name returns the existing instrument rather than raising or shadowing.
-      *(These names are the registry's own, not the `maistro_*` names ADR-037 specifies —
-      that is AC-5.)*
-- [x] **AC-3** A tracing decorator opens a span around the wrapped call and falls back to a
-      no-op when OTEL is absent, so an uninstrumented deployment neither fails nor silently
-      swallows the wrapped call's exceptions.
-- [x] **AC-4** An event bus delivers a published event to every subscriber of its topic, and
-      a subscriber that raises does not prevent delivery to the others.
-- [ ] **AC-5** The 6 ADR-037-named `maistro_*` metrics are emitted.
-- [ ] **AC-6** The ~14 ADR-037-required spans are instrumented at their named call sites.
-- [ ] **AC-7** The 6 ADR-037-named event topics are emitted.
-- [ ] **AC-8** `trace_id` and `agent_id` are bound to log context.
-- [ ] **AC-9** Events persist indefinitely (audit requirement).
-- [ ] **AC-10** A sampling and retention policy is configured.
+```gherkin
+Feature: Observability baseline scaffolding
+
+  @AC-1
+  Scenario: Log context is request-scoped
+    Given logging configured by configure_logging
+    When two concurrent requests each bind their own request_id
+    Then each request's records carry only its own request_id
+    And clearing the context removes the key from later records
+
+  @AC-2
+  Scenario: The metrics registry shares instruments by name
+    Given a metrics registry
+    When the same metric name is requested twice
+    Then the same instrument is returned both times
+    And counts recorded through the first handle are still collected
+    And counters, gauges, and histograms all behave this way
+
+  @AC-3
+  Scenario: The tracing decorator degrades without OTEL
+    Given OpenTelemetry is not installed
+    When a decorated function is called
+    Then the function runs and its result is returned
+    And an exception raised inside it propagates rather than being swallowed
+
+  @AC-4
+  Scenario: The event bus delivers to every subscriber
+    Given several subscribers to one topic, one of which raises
+    When an event is published to that topic
+    Then the remaining subscribers still receive it
+
+  @AC-5
+  Scenario: The ADR-037 metric names are emitted
+    Given a running engine
+    When metrics are collected
+    Then the 6 maistro_*-namespaced metrics ADR-037 names are present
+
+  @AC-6
+  Scenario: The ADR-037 spans are instrumented
+    Given a running engine
+    When a request traverses the named call sites
+    Then the ~14 spans ADR-037 requires are recorded under their given names
+
+  @AC-7
+  Scenario: The ADR-037 event topics are emitted
+    Given a running engine
+    When the corresponding actions occur
+    Then the 6 dot-namespaced topics ADR-037 names are published
+
+  @AC-8
+  Scenario: Trace and agent identity reach the logs
+    Given a request handled by a named agent within a trace
+    When its log records are examined
+    Then each carries both trace_id and agent_id
+
+  @AC-9
+  Scenario: Events persist indefinitely
+    Given events written some time ago
+    When the audit period has elapsed
+    Then those events are still readable
+
+  @AC-10
+  Scenario: Sampling and retention are configured
+    Given a deployed engine
+    When its observability configuration is read
+    Then a sampling rate and a retention period are set explicitly
+```
 
 ## Testing
 

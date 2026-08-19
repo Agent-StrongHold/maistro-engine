@@ -304,8 +304,10 @@ Scenario: InMemoryDesignSystemRegistry satisfies DesignSystemRegistry protocol
 Scenario: Package is importable and exposes public API
   Given a PYTHONPATH including maistro-design/src
   When the following are imported:
+    """
     DesignEngine, DesignSkill, DesignSystem, SkillMode
     TrustTier, InMemoryTrustBanishList, InMemoryTrustReviewQueue
     InMemoryDesignSkillRegistry, InMemoryDesignSystemRegistry
+    """
   Then no ImportError is raised
 ```

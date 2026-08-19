@@ -46,6 +46,12 @@ dev = [
     "pytest-cov>=6.0",
     "ruff>=0.9",
     "mypy>=1.14",
+    # scripts/check-ac-state.py parses the acceptance-criteria Gherkin with the
+    # real grammar, not a regex. It arrives transitively today via
+    # hive-conductor's pytest-bdd, which is a different package's dependency
+    # and free to drop it — and the failure would be an ImportError in a gate,
+    # i.e. the same shape as the two notes above.
+    "gherkin-official>=29.0",
     "radon>=6.0",
     "vulture>=2.14",
     "types-PyYAML>=6.0",
@@ -86,6 +92,12 @@ dev = [
     "pytest-cov>=6.0",
     "ruff>=0.9",
     "mypy>=1.14",
+    # scripts/check-ac-state.py parses the acceptance-criteria Gherkin with the
+    # real grammar, not a regex. It arrives transitively today via
+    # hive-conductor's pytest-bdd, which is a different package's dependency
+    # and free to drop it — and the failure would be an ImportError in a gate,
+    # i.e. the same shape as the two notes above.
+    "gherkin-official>=29.0",
     "types-PyYAML>=6.0",
     "types-regex>=2024.5.15",
     "questionary>=2.0",

@@ -1073,7 +1073,7 @@ Feature: Stage-aware retry policies
     And the operation has an idempotency key
     When should_retry is called with stage "write", attempt 0, and has_idempotency_key true
     Then it shall return false
-    Because the default write max_attempts is 1 even with an idempotency key
+    # ...because the default write max_attempts is 1 even with an idempotency key
     And a custom policy with max_attempts greater than 1 would return true
 
   Scenario: Non-transient errors are never retried regardless of stage

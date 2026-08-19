@@ -47,6 +47,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from gherkin.parser import Parser as GherkinParser
+from gherkin.token_scanner import TokenScanner
+
 ROOT = Path(__file__).resolve().parent.parent
 SPEC_DIR = ROOT / "docs" / "specs"
 ADR_DIR = ROOT / "docs" / "adr"
@@ -70,11 +73,14 @@ FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---", re.DOTALL)
 AC_HEADING_RE = re.compile(r"^##\s+acceptance\s+criteria.*$", re.IGNORECASE | re.MULTILINE)
 NEXT_HEADING_RE = re.compile(r"^##\s", re.MULTILINE)
 AC_ID_RE = re.compile(r"\*\*AC-(\d+)\*\*")
+AC_TAG_RE = re.compile(r"AC-\d+")
 # `- [x] **AC-3** ...` — the box is the author's *claim*; the ladder below is
 # the measurement. Where the two disagree the report says so, because a ticked
 # box on an unproven criterion is the same falsehood ADR-level `Implemented`
 # was on six documents at once.
 CHECKBOX_RE = re.compile(r"^\s*-\s*\[([ xX])\]\s*\*\*AC-(\d+)\*\*", re.MULTILINE)
+GHERKIN_FENCE_RE = re.compile(r"```gherkin\n(.*?)```", re.DOTALL)
+FEATURE_RE = re.compile(r"^\s*Feature:", re.MULTILINE)
 ID_RE = re.compile(r"^id:\s*(\S+)", re.MULTILINE)
 STATUS_RE = re.compile(r"^status:\s*(.+?)\s*$", re.MULTILINE)
 LAYER_RE = re.compile(r"^layer:\s*(.+?)\s*$", re.MULTILINE)
@@ -108,6 +114,9 @@ class Criterion:
     module: str | None = None
     covered_by: list[str] = field(default_factory=list)
     passing: bool | None = None
+    form: str = "bullet"
+    scenario: list[str] | None = None
+    has_outcome: bool | None = None
 
     def rung(self, unreachable: set[str]) -> str:
         if not self.covered_by:
@@ -126,6 +135,78 @@ def _is_reachable(module: str, unreachable: set[str]) -> bool:
     """A module is reachable unless it, or an ancestor package, is baselined."""
     parts = module.split(".")
     return not any(".".join(parts[: i + 1]) in unreachable for i in range(len(parts)))
+
+
+def parse_gherkin(block: str) -> tuple[list[dict[str, Any]], str | None]:
+    """Scenarios and their tags from one ```gherkin fence, or a parse error.
+
+    The corpus already carries 224 scenarios across 11 documents, written before
+    anything read them — more structured acceptance criteria than the `**AC-N**`
+    bullet form this script started with. They are parsed with the real Gherkin
+    parser rather than a regex, because the point of choosing a standard grammar
+    is that its own tooling decides what is well-formed. Four blocks do not
+    parse today; an unenforced convention drifts, which is the argument for
+    reporting the failures rather than tolerating them.
+
+    A criterion's identity is a Gherkin *tag* — `@AC-3` above the scenario —
+    not the scenario's name. Names get reworded; a reworded name would silently
+    break the binding to the test claiming it and the criterion would drop back
+    to `declared` with nothing saying why.
+    """
+    src = block if FEATURE_RE.search(block) else "Feature: (implicit)\n" + block
+    try:
+        doc = GherkinParser().parse(TokenScanner(src))
+    except Exception as exc:
+        return [], str(exc).splitlines()[0]
+
+    scenarios: list[dict[str, Any]] = []
+    for child in doc.get("feature", {}).get("children", []):
+        scenario = child.get("scenario")
+        if not scenario:
+            continue
+        steps = [s["keyword"].strip() for s in scenario.get("steps", [])]
+        scenarios.append(
+            {
+                "name": scenario.get("name", ""),
+                "tags": [tag["name"].lstrip("@") for tag in scenario.get("tags", [])],
+                "keywords": steps,
+                # A scenario with no Then states no observable outcome, so
+                # nothing about it is falsifiable. That is a weaker defect than
+                # a parse failure and a real one, so it is counted separately.
+                "has_outcome": any(k in ("Then", "*") for k in steps),
+            }
+        )
+    return scenarios, None
+
+
+def gherkin_criteria(
+    section: str,
+) -> tuple[dict[str, list[dict[str, Any]]], list[str], list[str]]:
+    """AC-tagged scenarios in an acceptance-criteria section.
+
+    Returns the tagged scenarios keyed by AC id, the names of scenarios
+    carrying no AC tag (declared but unaddressable), and any parse errors.
+    """
+    tagged: dict[str, list[dict[str, Any]]] = {}
+    untagged: list[str] = []
+    errors: list[str] = []
+    for block in GHERKIN_FENCE_RE.findall(section):
+        scenarios, error = parse_gherkin(block)
+        if error:
+            errors.append(error)
+            continue
+        for scenario in scenarios:
+            ac_tags = [tag for tag in scenario["tags"] if AC_TAG_RE.fullmatch(tag)]
+            if not ac_tags:
+                untagged.append(scenario["name"])
+                continue
+            for tag in ac_tags:
+                # A list, not an assignment: one criterion often needs several
+                # scenarios (a table of divergence modes plus the non-mutation
+                # case). Keying a single scenario per tag drops all but the last
+                # and reports a smaller corpus than exists.
+                tagged.setdefault(tag, []).append(scenario)
+    return tagged, untagged, errors
 
 
 def _frontmatter(text: str) -> str:
@@ -291,12 +372,27 @@ def collect_specs(
         spec_id = (ID_RE.search(fm) or [None, path.stem])[1]
         section = _ac_section(text)
         modules = _ac_modules(fm)
+        # Bullets stay section-scoped: a bare `**AC-1**` in prose elsewhere is
+        # not a criterion. Gherkin fences do not need the scoping — a
+        # `Scenario:` inside a ```gherkin block is a criterion by construction,
+        # and requiring the heading loses SPEC-160 entirely, a document whose
+        # whole body is 39 scenarios under topic headings with no
+        # "## Acceptance criteria" anywhere in it.
+        gherkin_scope = text
         boxes = {f"AC-{n}": state.lower() == "x" for state, n in CHECKBOX_RE.findall(section)}
+        scenarios, untagged, gherkin_errors = gherkin_criteria(gherkin_scope)
+
+        # Both forms count, and the mix is reported rather than quietly
+        # normalised: the corpus is mid-convergence from prose bullets to
+        # Gherkin, and hiding which form a spec uses would hide the progress.
+        shorts = list(
+            dict.fromkeys([f"AC-{n}" for n in AC_ID_RE.findall(section)] + list(scenarios))
+        )
 
         criteria = []
-        for n in AC_ID_RE.findall(section):
-            short = f"AC-{n}"
+        for short in shorts:
             ac_id = f"{spec_id}/{short}"
+            scenario = scenarios.get(short)
             criteria.append(
                 Criterion(
                     ac_id=ac_id,
@@ -306,6 +402,9 @@ def collect_specs(
                     # None until a run settles it — never silently False, which
                     # would read as "the test failed".
                     passing=None if passing is None else ac_id in passing,
+                    form="gherkin" if scenario else "bullet",
+                    scenario=[s["name"] for s in scenario] if scenario else None,
+                    has_outcome=all(s["has_outcome"] for s in scenario) if scenario else None,
                 )
             )
 
@@ -321,6 +420,9 @@ def collect_specs(
                 "has_ac_heading": bool(AC_HEADING_RE.search(text)),
                 "criteria_total": len(criteria),
                 "annotated": sum(1 for c in criteria if c.module),
+                "gherkin_criteria": sum(1 for c in criteria if c.form == "gherkin"),
+                "gherkin_parse_errors": gherkin_errors,
+                "scenarios_without_ac_tag": untagged,
                 "distribution": dist,
                 "tier": tier_of(rungs),
                 "criteria": [
@@ -329,6 +431,8 @@ def collect_specs(
                         "claimed": c.claimed,
                         "module": c.module,
                         "covered_by": c.covered_by,
+                        "form": c.form,
+                        "scenario": c.scenario,
                         "rung": c.rung(unreachable),
                     }
                     for c in criteria
@@ -338,7 +442,12 @@ def collect_specs(
     return specs
 
 
-def collect_adrs(specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def collect_adrs(
+    specs: list[dict[str, Any]],
+    markers: dict[str, list[str]],
+    unreachable: set[str],
+    passing: set[str] | None,
+) -> list[dict[str, Any]]:
     """Fold specs up to the ADRs they implement, via the spec's `implements:`."""
     by_adr: dict[str, list[dict[str, Any]]] = {}
     for spec in specs:
@@ -347,10 +456,27 @@ def collect_adrs(specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     adrs = []
     for path in sorted(ADR_DIR.glob("ADR-*.md")):
-        fm = _frontmatter(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+        fm = _frontmatter(text)
         adr_id = (ID_RE.search(fm) or [None, path.stem])[1]
         children = by_adr.get(adr_id, [])
         tiers = [s["tier"] for s in children if s["criteria_total"]]
+
+        # Four ADRs (063, 064, 065, 066) carry 147 scenarios of their own,
+        # written before the spec split. Folding only from specs would report
+        # them as `unmeasured` while their own acceptance criteria sit right
+        # there in the document.
+        own, own_untagged, own_errors = gherkin_criteria(text)
+        own_rungs = [
+            Criterion(
+                ac_id=f"{adr_id}/{short}",
+                covered_by=markers.get(f"{adr_id}/{short}", []),
+                passing=None if passing is None else f"{adr_id}/{short}" in passing,
+            ).rung(unreachable)
+            for short in own
+        ]
+
+        inputs = tiers + own_rungs
         adrs.append(
             {
                 "id": adr_id,
@@ -358,7 +484,10 @@ def collect_adrs(specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "declared_status": (STATUS_RE.search(fm) or [None, "?"])[1],
                 "specs": [s["id"] for s in children],
                 "measurable_specs": len(tiers),
-                "tier": tier_of(tiers) if tiers else "unmeasured",
+                "own_criteria": len(own),
+                "scenarios_without_ac_tag": own_untagged,
+                "gherkin_parse_errors": own_errors,
+                "tier": tier_of(inputs) if inputs else "unmeasured",
             }
         )
     return adrs
@@ -380,7 +509,7 @@ def main(argv: list[str]) -> int:
     passing = passing_ac_ids(roots) if args.run_tests else None
 
     specs = collect_specs(markers, unreachable, passing)
-    adrs = collect_adrs(specs)
+    adrs = collect_adrs(specs, markers, unreachable, passing)
 
     declared_ids = {c["id"] for s in specs for c in s["criteria"]}
     orphans = sorted(set(markers) - declared_ids)
@@ -430,6 +559,11 @@ def main(argv: list[str]) -> int:
             "markers_found": len(markers),
             "markers_without_criterion": len(orphans),
             "criteria_claimed_but_unproven": len(false_claims),
+            "gherkin_criteria": sum(s["gherkin_criteria"] for s in specs),
+            "scenarios_without_ac_tag": sum(
+                len(d["scenarios_without_ac_tag"]) for d in (*specs, *adrs)
+            ),
+            "gherkin_parse_errors": sum(len(d["gherkin_parse_errors"]) for d in (*specs, *adrs)),
             "completion_claims_contradicted": len(contradicted),
             "completion_claims_unverifiable": len(unverifiable),
         },
@@ -457,6 +591,9 @@ def main(argv: list[str]) -> int:
     print(f"  test markers found           : {t['markers_found']}")
     print(f"  markers naming no criterion  : {t['markers_without_criterion']}")
     print(f"  ticked but unproven          : {t['criteria_claimed_but_unproven']}")
+    print(f"  criteria written as Gherkin  : {t['gherkin_criteria']}")
+    print(f"  scenarios carrying no @AC tag: {t['scenarios_without_ac_tag']}")
+    print(f"  gherkin blocks that fail parse: {t['gherkin_parse_errors']}")
     print(f"  'Implemented', contradicted  : {t['completion_claims_contradicted']}")
     print(f"  'Implemented', unverifiable  : {t['completion_claims_unverifiable']}")
     for rung in RUNGS:
