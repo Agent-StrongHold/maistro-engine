@@ -64,6 +64,9 @@ Accepted AttemptResult/NodeRun outcome separation adds nine maistro-core node
 IDs. Durable execution-lease fencing adds five more maistro-core node IDs.
 Authoritative TraversalCommit/TraversalCheckpoint contracts add eleven
 maistro-core node IDs.
+PR #447 adds six maistro-core node IDs covering checkpoint-bridged traversal
+history, reuse of frozen execution state across transitions, and rejection of
+execution continuation after an accepted logical completion.
 Stream 1 adds 99 maistro-core node IDs for the canonical Project,
 Run/NodeRun/Attempt, runtime, persistence, and execution-service contracts.
 Stream 6 adds five provider-parity node IDs.
