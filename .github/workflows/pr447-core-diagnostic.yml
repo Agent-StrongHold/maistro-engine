@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fix/develop-traversal-commit-lint
+  pull_request:
+    branches:
+      - develop
 
 permissions:
   contents: read
