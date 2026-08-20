@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from enum import StrEnum
 
+# The production nesting cap (ADR-066 IMP-023). Lives here rather than on the
+# node implementations so the spawn-side guard (agent_synth_dag) and the
+# increment-side backstop (durable_runs.executor) cannot drift apart.
+DEFAULT_MAX_DEPTH = 3
+
 
 class DepthRole(StrEnum):
     ROOT = "root"

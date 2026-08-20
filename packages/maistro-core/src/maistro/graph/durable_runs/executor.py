@@ -16,6 +16,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from maistro.graph.compaction import ContextCompactor
 from maistro.graph.conditions import MISSING, evaluate_predicate
 from maistro.graph.definitions import Graph
 from maistro.graph.definitions import Node as GraphNode
@@ -178,9 +179,14 @@ async def _walk(
     """Execute one persisted frontier per step until pause or terminal state."""
     graph = record.run.graph.materialize()
     steps = 0
+    # Per-walk, not module-global: the compactor's rolling summary list is
+    # per-run state (ADR-066 IMP-044). Checked before each frontier so an
+    # oversized snapshot shrinks before _build_ctx hands it to every node.
+    compactor = ContextCompactor()
 
     while record.graph_state.active_node_ids and steps < max_steps:
         steps += 1
+        record = _maybe_compact_blackboard(record, compactor)
         frontier = record.graph_state.active_node_ids
         unknown = next(
             (node_id for node_id in frontier if _node_spec(graph, node_id) is None),
@@ -1028,9 +1034,54 @@ def _maybe_increment_synth_depth(
         return record
     snapshot = dict(record.graph_state.blackboard_snapshot)
     metadata = dict(snapshot.get("metadata") or {})
+    # Bookkeeping, not enforcement: this records a spawn that already
+    # happened (test_synth_depth_increments_exactly_once_from_three pins the
+    # increment as unconditional). The policy guard is the spawning node's
+    # own can_spawn check — refusing to *record* a violating spawn would not
+    # un-spawn it, it would just make the ledger lie.
     metadata["synth_depth"] = int(metadata.get("synth_depth", 0)) + 1
     snapshot["metadata"] = metadata
     state = _replace_state(record.graph_state, blackboard_snapshot=snapshot)
+    return _replace_record(record, graph_state=state)
+
+
+def _maybe_compact_blackboard(
+    record: DurableRunRecord,
+    compactor: ContextCompactor,
+) -> DurableRunRecord:
+    """Shrink an oversized blackboard snapshot before the next frontier runs.
+
+    Uses the deterministic truncation path only (no ``llm_call``):
+    ``ContextCompactor``'s LLM path takes a synchronous callable, this
+    executor has no LLM handle of its own, and ADR-066's ``CompactionResult``
+    accounting does not exist yet — so iterative LLM summarization remains
+    deliberately unwired. The blackboard is rebuilt from the same four
+    snapshot fields ``_build_ctx`` hands every node, so what is measured is
+    exactly what nodes would receive.
+    """
+    from maistro.graph.types import GraphBlackboard
+
+    snapshot = record.graph_state.blackboard_snapshot
+    try:
+        blackboard = GraphBlackboard(
+            task_objective=str(snapshot.get("task_objective") or ""),
+            workspace=str(snapshot.get("workspace") or ""),
+            metadata=dict(snapshot.get("metadata") or {}),
+            node_annotations=dict(snapshot.get("node_annotations") or {}),
+        )
+    except Exception:
+        return record
+    if not compactor.should_compact(blackboard):
+        return record
+    compacted = compactor.compact(blackboard)
+    new_snapshot = dict(snapshot)
+    new_snapshot.update(
+        task_objective=compacted.task_objective,
+        workspace=compacted.workspace,
+        metadata=compacted.metadata,
+        node_annotations=compacted.node_annotations,
+    )
+    state = _replace_state(record.graph_state, blackboard_snapshot=new_snapshot)
     return _replace_record(record, graph_state=state)
 
 
