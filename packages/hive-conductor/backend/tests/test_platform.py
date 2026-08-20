@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 @pytest.fixture(autouse=True)
 def _mock_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TESTING", "1")
-    monkeypatch.setenv("JIRA_SERVER_URL", "https://myjira.disney.com")
+    monkeypatch.setenv("JIRA_SERVER_URL", "https://jira.example.com")
     monkeypatch.setenv("LITELLM_API_BASE", "https://test-gateway.example.com/v1")
     monkeypatch.setenv("LITELLM_API_KEY", "test-key")
 

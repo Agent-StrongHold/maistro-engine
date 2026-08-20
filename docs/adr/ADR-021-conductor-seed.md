@@ -170,7 +170,7 @@ class ConductorSeed:
 
 ## Source references
 
-- `/root/github/Project_mAIstro/specs/security/S-149-conductor-seed.md` — full spec
+- `~/maistro-engine/specs/security/S-149-conductor-seed.md` — full spec
 
 ## Links
 

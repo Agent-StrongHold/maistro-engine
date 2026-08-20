@@ -139,7 +139,7 @@ class IdentityService:
 
 ## Source references
 
-- `/root/github/Project_mAIstro/specs/security/S-152-agent-identity-did-vc.md` — full 190-line spec
+- `~/maistro-engine/specs/security/S-152-agent-identity-did-vc.md` — full 190-line spec
 
 ## Links
 

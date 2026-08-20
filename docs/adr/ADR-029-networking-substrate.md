@@ -153,7 +153,7 @@ class Substrate(Protocol):
 
 ## Source references
 
-- `/root/github/Project_mAIstro/specs/infra/S-153-tailscale-native.md` — full 259-line spec
+- `~/maistro-engine/specs/infra/S-153-tailscale-native.md` — full 259-line spec
 - References: LE DNS-PERSIST-01 announcement (2026-02-18), cert-manager#8373, netbirdio/netbird#2375, netbirdio/netbird#5479
 
 ## Links

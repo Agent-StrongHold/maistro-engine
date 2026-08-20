@@ -28,7 +28,7 @@
 - `http.py` — `AsyncHttp` protocol (injectable; thin httpx default) for testable HTTP.
 - Tests: `packages/maistro-core/tests/capabilities/test_{infra_tier,inbox_approval,host_health_monitor,host_health_action,infra_e2e}.py`
 
-**Commands** (run from repo root `/root/github/maistro-engine`, env via `uv`):
+**Commands** (run from repo root `~/maistro-engine`, env via `uv`):
 - Single test: `uv run pytest packages/maistro-core/tests/capabilities/test_registry.py -v`
 - Subsystem: `uv run pytest packages/maistro-core/tests/capabilities -v`
 - Types: `uv run mypy packages/maistro-core/src/maistro/capabilities`

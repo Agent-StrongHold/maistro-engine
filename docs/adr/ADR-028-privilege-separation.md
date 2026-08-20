@@ -151,7 +151,7 @@ class PrivilegeService:
 
 ## Source references
 
-- `/root/github/Project_mAIstro/specs/security/S-142-privilege-separation.md` — full 155-line spec
+- `~/maistro-engine/specs/security/S-142-privilege-separation.md` — full 155-line spec
 
 ## Links
 

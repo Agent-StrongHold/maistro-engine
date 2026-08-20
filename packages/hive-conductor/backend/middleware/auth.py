@@ -189,7 +189,7 @@ def origin_allowed(origin: str | None, host: str | None = None) -> bool:
     1. **Same-origin.** The page that opened the socket is served by this very
        server (`Origin`'s authority == the request's own `Host`). CORS never
        applies to same-origin requests, so a deployment reached at
-       `http://192.168.1.10:8101` — where the SPA and the API share an origin —
+       `http://192.0.2.1:8101` — where the SPA and the API share an origin —
        has never had any reason to list itself in `CORS_ORIGINS`, and most
        don't. Checking the configured list alone would reject the app's own
        front end on every non-localhost deployment, because the defaults in

@@ -125,7 +125,7 @@ class ElectrumServerPlugin:
 
 ## Source references
 
-- `/root/github/Project_mAIstro/specs/tools/S-154-electrum-server.md` — full 166-line spec
+- `~/maistro-engine/specs/tools/S-154-electrum-server.md` — full 166-line spec
 
 ## Links
 

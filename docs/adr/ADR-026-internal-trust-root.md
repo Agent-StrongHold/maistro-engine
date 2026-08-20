@@ -124,7 +124,7 @@ DID document (ADR-024) includes service entry advertising the CA:
   "type": "X509TrustAnchor",
   "serviceEndpoint": {
     "caCertSha256": "<hash>",
-    "nameConstraints": ["*.brigid.local"],
+    "nameConstraints": ["*.example.local"],
     "validFrom": "2026-04-25",
     "validUntil": "2036-04-25"
   }
@@ -174,7 +174,7 @@ class TrustInstaller:
 
 ## Source references
 
-- `/root/github/Project_mAIstro/specs/security/S-155-internal-trust-root.md` — full 265-line spec
+- `~/maistro-engine/specs/security/S-155-internal-trust-root.md` — full 265-line spec
 
 ## Links
 

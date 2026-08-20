@@ -1,13 +1,16 @@
-"""Load MCP server manifests from MAISTROcontainer_registry/MCP_servers when present.
+"""Load MCP server manifests from an external MCP_servers directory when
+present, falling back to a directory bundled in this repo.
 
 Tolerates two run environments:
-  - Host (dev): file lives at
-    /…/parent-project/container_registry/user_containers/sandbox_templates/maistro-engine/packages/hive-conductor/backend/services/mcp_manifest_loader.py
-    so parents[4] = maistro-engine and parents[6] = parent-project
-    (MCP_servers lives at parent-project/container_registry/MCP_servers).
+  - Host (dev): if this package happens to be nested several levels inside
+    a parent checkout that provides a sibling `container_registry/MCP_servers`
+    directory, walk up to find it (see _PARENT_MCP_DIR below). That layout
+    is specific to certain nested deployments and doesn't exist in a
+    standalone checkout of this repo — the walk simply comes up empty there.
   - Container (prod): file lives at /app/backend/services/mcp_manifest_loader.py
     so parents[4] doesn't exist (and there's no MCP_servers on disk inside
-    the image anyway — the canonical path is to mount the dir in compose).
+    the image anyway — the canonical path is to mount the dir via whatever
+    deployment config applies).
 
 Both paths fall through to FALLBACK + MAISTRO_MCP_OVERRIDE_DIR env so the loader
 never crashes startup.
@@ -36,14 +39,14 @@ def _safe_parent(path: Path, depth: int) -> Path | None:
 
 _THIS_FILE = Path(__file__).resolve()
 _MAISTRO_ROOT = _safe_parent(_THIS_FILE, 4)
-# MAISTROrepo root is two more levels up from maistro-engine
-# (.../container_registry/user_containers/sandbox_templates/maistro-engine).
+# The optional parent checkout root is two more levels up, for the nested-
+# deployment layout described in the module docstring above.
 _PARENT_ROOT = _safe_parent(_MAISTRO_ROOT, 2) if _MAISTRO_ROOT else None
 _PARENT_MCP_DIR = (_PARENT_ROOT / "container_registry" / "MCP_servers") if _PARENT_ROOT else None
 _FALLBACK_MCP_DIR = (_MAISTRO_ROOT / "config" / "mcp_servers") if _MAISTRO_ROOT else None
 
-# Override via env (set in docker-compose.vibehost-maistro.yml to point at a
-# mounted volume of container_registry/MCP_servers/).
+# Override via env — point this at a mounted volume of
+# container_registry/MCP_servers/ in whatever deployment config applies.
 _OVERRIDE_DIR_ENV = "MAISTRO_MCP_OVERRIDE_DIR"
 
 

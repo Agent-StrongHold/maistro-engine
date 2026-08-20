@@ -312,7 +312,7 @@ PM_TOOLS = [
                     },
                     "payload": {
                         "type": "object",
-                        "description": 'Default arguments (e.g. {"jql": "project = JEDAI AND status = Blocked"})',
+                        "description": 'Default arguments (e.g. {"jql": "project = DEMO AND status = Blocked"})',
                     },
                 },
                 "required": ["name", "capability"],
@@ -680,7 +680,7 @@ PM_TOOLS = [
 ]
 
 
-_JIRA_BASE = "https://myjira.disney.com"
+_JIRA_BASE = "https://jira.example.com"
 
 
 def _jira_headers(jira_pat: str) -> dict[str, str]:
@@ -691,11 +691,11 @@ async def _tool_poll_jira(
     args: dict[str, Any], user_id: str, jira_pat: str | None
 ) -> dict[str, Any]:
     if not jira_pat:
-        return {"error": "No Jira PAT configured. Go to Credentials and add your Disney Jira PAT."}
+        return {"error": "No Jira PAT configured. Go to Credentials and add your Jira PAT."}
     import httpx
 
     max_results = min(args.get("max_results", 10), 15)
-    jql = "project = JEDAI AND updated >= -7d ORDER BY updated DESC"
+    jql = "project = DEMO AND updated >= -7d ORDER BY updated DESC"
     try:
         async with shared_client(timeout=30.0) as client:
             r = await client.get(
@@ -837,7 +837,7 @@ async def _tool_check_blockers(
     import httpx
 
     jql = (
-        "project = JEDAI AND resolution = Unresolved AND "
+        "project = DEMO AND resolution = Unresolved AND "
         "(status = Blocked OR flagged is not EMPTY) ORDER BY priority DESC"
     )
     max_results = min(args.get("max_results", 10), 15)
@@ -900,7 +900,7 @@ async def _tool_search_confluence(
     if not query:
         return {"error": "query is required"}
 
-    confluence_base = "https://mywiki.disney.com"
+    confluence_base = "https://wiki.example.com"
     try:
         async with shared_client(timeout=30.0) as client:
             r = await client.get(

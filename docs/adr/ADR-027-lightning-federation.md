@@ -130,7 +130,7 @@ class FederationTransport:
 
 ## Source references
 
-- `/root/github/Project_mAIstro/specs/security/S-156-lightning-federation.md` — full 189-line spec
+- `~/maistro-engine/specs/security/S-156-lightning-federation.md` — full 189-line spec
 
 ## Links
 

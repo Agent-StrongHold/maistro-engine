@@ -153,7 +153,7 @@ class CryptoOps:
 
 ## Source references
 
-- `/root/github/Project_mAIstro/specs/security/S-151-agent-crypto-ops.md` — full 216-line spec
+- `~/maistro-engine/specs/security/S-151-agent-crypto-ops.md` — full 216-line spec
 
 ## Links
 

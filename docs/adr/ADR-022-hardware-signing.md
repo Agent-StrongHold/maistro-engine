@@ -120,7 +120,7 @@ class SigningDevice(Protocol):
 
 ## Source references
 
-- `/root/github/Project_mAIstro/specs/security/S-150-hardware-signing.md` — full spec
+- `~/maistro-engine/specs/security/S-150-hardware-signing.md` — full spec
 
 ## Links
 

@@ -122,7 +122,7 @@ class SetupWizard:
 
 ## Source references
 
-- `/root/github/Project_mAIstro/specs/infra/S-139-setup-wizard.md` — full 269-line spec
+- `~/maistro-engine/specs/infra/S-139-setup-wizard.md` — full 269-line spec
 - Cross-references: S-016 (Console), S-138 (browser host), S-141 (vault), S-142 (privilege separation → ADR-028), S-147 (signed binaries), S-149 (seed → ADR-021), S-150 (hardware signing → ADR-022), S-151 (crypto → ADR-023), S-153 (substrate → ADR-029), S-155 (TLS → ADR-026)
 
 ## Links
