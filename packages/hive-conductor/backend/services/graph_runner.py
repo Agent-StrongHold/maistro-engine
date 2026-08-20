@@ -682,7 +682,7 @@ async def execute_dag_streaming(dag_data: dict, *, on_response: OnResponseHook |
     `_build_llm_call` for the additive quota-recording seam this exposes.
     """
     from maistro.graph.executor import run_graph
-    from maistro.graph.types import GraphBlackboard, GraphConfig, GraphEdge, NodeConfig
+    from maistro.graph.types import GraphConfig, GraphEdge, GraphTask, NodeConfig
 
     nodes_cfg = {}
     for n in dag_data.get("nodes", []):
@@ -717,9 +717,15 @@ async def execute_dag_streaming(dag_data: dict, *, on_response: OnResponseHook |
         run_scout=dag_data.get("run_scout", False),
     )
 
-    blackboard = GraphBlackboard(
-        task_objective=dag_data.get("name", "Unnamed DAG"),
+    # The topology and objective travel inside GraphTask — run_graph builds
+    # the blackboard itself from the task. This call previously passed
+    # `task=<str>, config=..., blackboard=...` against a signature that
+    # accepts none of those keywords, so every streaming DAG execution
+    # raised TypeError and surfaced as a generic `failed` event.
+    task = GraphTask(
+        description=dag_data.get("description", dag_data.get("name", "")),
         workspace=dag_data.get("workspace", "/tmp/maistro-workspace"),  # nosec B108
+        graph_config=config,
     )
     yield {"status": "started", "node_count": len(nodes_cfg), "entry": entry_node}
 
@@ -727,12 +733,7 @@ async def execute_dag_streaming(dag_data: dict, *, on_response: OnResponseHook |
         # Inside the try so an unconfigured LLM (F3) surfaces as a structured
         # `failed` event on the stream instead of raising out of the generator.
         llm_call = _build_llm_call(on_response)
-        result = await run_graph(
-            task=dag_data.get("description", dag_data.get("name", "")),
-            config=config,
-            blackboard=blackboard,
-            llm_call=llm_call,
-        )
+        result = await run_graph(task, llm_call)
         for nr in result.node_results:
             yield {
                 "status": "node_complete",
@@ -741,10 +742,11 @@ async def execute_dag_streaming(dag_data: dict, *, on_response: OnResponseHook |
                 "response": nr.selected_candidate or "",
                 "success": nr.success,
             }
+        annotations = result.blackboard.node_annotations if result.blackboard else {}
         yield {
             "status": "completed",
             "cycles": result.total_cycles,
-            "annotations": dict(blackboard.node_annotations) if blackboard.node_annotations else {},
+            "annotations": dict(annotations) if annotations else {},
         }
     except Exception as exc:
         yield {"status": "failed", "error": str(exc)}

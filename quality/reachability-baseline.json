@@ -123,8 +123,6 @@
     "maistro.repertoire.run",
     "maistro.repertoire.types",
     "maistro.resilience.context_probe",
-    "maistro.resilience.rate_coordination",
-    "maistro.resilience.retry_policy",
     "maistro.sandbox",
     "maistro.sandbox.backends",
     "maistro.sandbox.backends.fake",

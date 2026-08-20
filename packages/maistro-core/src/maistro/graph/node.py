@@ -31,7 +31,9 @@ from maistro.graph.types import (
     NodeConfig,
 )
 from maistro.resilience.backoff import BackoffConfig, compute_backoff, jittered_backoff
-from maistro.resilience.classifier import ClassifiedError, classify_error
+from maistro.resilience.classifier import ClassifiedError, ErrorCategory, classify_error
+from maistro.resilience.rate_coordination import RateLimitCoordinator
+from maistro.resilience.retry_policy import OperationStage, get_policy
 
 logger = structlog.get_logger()
 
@@ -223,6 +225,14 @@ class IterationBudget:
         return self._consumed
 
 
+# Process-wide rate-limit ledger shared by every NodeRun by default (ADR-066
+# IMP-008, in-process scope): one node's 429 stops sibling nodes from
+# hammering the same model while its reset is pending. The cross-process file
+# backend and the ADR's check_before_call wait-seconds API remain unbuilt;
+# ADR-066's measurement note records that.
+_RATE_COORDINATOR = RateLimitCoordinator()
+
+
 @dataclass
 class NodeRun:
     run_id: str
@@ -245,6 +255,12 @@ class NodeRun:
     phase_log: list[tuple[NodePhase, float]] = field(default_factory=list)
     retry_count: int = 0
     max_retries: int = 3
+    # Stage-aware retry policy (ADR-066 IMP-009): the stage's RetryPolicy caps
+    # retries alongside the caller's max_retries — the tighter bound wins. An
+    # LLM generation is the EVALUATE cost profile; the ADR's dedicated
+    # LLM_CALL stage does not exist in the shipped retry_policy module.
+    stage: OperationStage = OperationStage.EVALUATE
+    rate_coordinator: RateLimitCoordinator = _RATE_COORDINATOR
 
     started_at: float | None = None
     completed_at: float | None = None
@@ -361,6 +377,23 @@ class NodeRun:
         if iteration_budget is not None and not iteration_budget.consume():
             await self._finish_failure(LLMProviderError("Iteration budget exhausted"))
             return True
+        if self.rate_coordinator.is_rate_limited(self.model):
+            reset_at = self.rate_coordinator.get_reset_time(self.model) or 0.0
+            wait = max(0.0, reset_at - time.time())
+            if wait > 0.0:
+                # A sibling node already hit this model's rate limit; waiting
+                # out the recorded reset beats burning this node's own retry
+                # budget against a known-limited provider (ADR-066 IMP-008).
+                # Capped: a billing-class cooldown (3600s) should fail through
+                # the normal classify path, not stall a frontier for an hour.
+                wait = min(wait, 60.0)
+                logger.warning(
+                    "node_awaiting_rate_limit_reset",
+                    node_id=self.node_id,
+                    model=self.model,
+                    wait_s=round(wait, 1),
+                )
+                await asyncio.sleep(wait)
         return False
 
     async def _execute_single(
@@ -510,8 +543,21 @@ class NodeRun:
         classified = classify_error(exc, provider=self.model, model=self.model)
         self.error_classifications.append(classified)
         self.circuit.record_failure()
+        if classified.category is ErrorCategory.RATE_LIMIT and classified.retry_after_seconds:
+            # Publish the reset so sibling nodes' _preflight_stop can wait it
+            # out instead of discovering the same 429 one node at a time.
+            # Keyed by model alias: the graph path has no model→provider
+            # resolver, and the limits observed here are per-model.
+            self.rate_coordinator.record_rate_limit(
+                self.model, time.time() + classified.retry_after_seconds
+            )
 
-        if not (classified.retryable and attempt < self.max_retries - 1):
+        # The stage policy and the caller's max_retries both cap the retry
+        # loop; the classification (which honours provider specifics the
+        # policy's own classify pass would not see) decides retryability.
+        policy = get_policy(self.stage)
+        allowed_attempts = min(self.max_retries - 1, policy.max_attempts)
+        if not (policy.retryable and classified.retryable and attempt < allowed_attempts):
             await self._finish_failure(exc, classified)
             return False
 
