@@ -34,6 +34,7 @@ owners:
 history:
   - status: Proposed
     date: 2026-05-29
+  - status: Implemented
 ---
 
 # ADR-061 — maistro-design: composable design skills + design systems

@@ -28,6 +28,7 @@ owners:
 history:
   - status: Proposed
     date: 2026-05-30
+  - status: Implemented
 ---
 
 # SPEC-206: Policy-conformance comparison engine

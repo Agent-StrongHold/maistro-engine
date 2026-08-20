@@ -27,8 +27,6 @@ history:
     date: 2026-05-07
   - status: Accepted
     date: 2026-05-07
-  - status: Accepted
-    date: 2026-06-19
 ---
 
 # ADR-021: Conductor Seed — BIP39/BIP32 HD root of trust

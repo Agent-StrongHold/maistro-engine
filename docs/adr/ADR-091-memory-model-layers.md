@@ -28,6 +28,7 @@ owners:
 history:
   - status: Proposed
     date: 2026-06-02
+  - status: Implemented
 ---
 
 # ADR-091: Memory model reconciliation

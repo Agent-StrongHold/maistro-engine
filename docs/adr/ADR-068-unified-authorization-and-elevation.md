@@ -28,6 +28,7 @@ owners:
 history:
   - status: Proposed
     date: 2026-05-29
+  - status: Implemented
 ---
 
 # ADR-068: Unified Authorization & Elevation

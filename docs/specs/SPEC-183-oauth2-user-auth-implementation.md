@@ -30,6 +30,11 @@ history:
     date: 2026-07-02
   - status: In Progress
     date: 2026-07-29
+    reason: >-
+      Status corrected from Implemented (D2/#290): phases 1-2 (OAuth2 client +
+      identity linking, maistro/auth/oauth.py) are real and tested, but no
+      /v1/auth/oauth/{provider}/start-or-callback route exists anywhere in the
+      tree (phase 3) and no audit-event wiring (phase 4).
 ---
 
 # SPEC-183: OAuth2 user authentication — implementation

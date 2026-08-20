@@ -13,7 +13,9 @@ supersedes: []
 blocks: []
 blocked-by: []
 contracts: []
-tests: []
+tests:
+  - .github/workflows/ci.yml
+  - .github/workflows/registry.yml
 layer: Governance
 owners:
   - '@BlakeMatthews-dev'

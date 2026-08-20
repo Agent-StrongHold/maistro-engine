@@ -27,6 +27,7 @@ owners:
 history:
   - status: Proposed
     date: 2026-05-29
+  - status: Accepted
 ---
 
 # SPEC-182: A2A delegation broker — implementation

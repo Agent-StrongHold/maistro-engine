@@ -48,6 +48,13 @@ per status. This ADR fixes that.
 Statuses move forward only. If a decision or spec was wrong, it is **Superseded**
 by a new document — never reverted to a prior status.
 
+One exception, added 2026-08-20: a history entry may move *backwards* when it
+carries a non-empty `reason` — a **correction** of a status that was claimed
+and turned out false, as SPEC-183's `Implemented` was with two of its four
+phases missing. The reason is mandatory so a silent downgrade still fails
+lint: going backwards costs a sentence, on the entry itself, where it survives
+later transitions.
+
 Every status transition is recorded with a date in the `history` frontmatter field.
 
 ---
@@ -102,6 +109,7 @@ Superseded    Superseded           Superseded
 | **Tests Passing** | AC covered by tests, all green | `tests-passing` date, non-empty `tests` frontmatter |
 | **Implemented** | Merged and shipping | `implemented` date |
 | **Superseded** | Replaced by newer spec (terminal) | `superseded` date, `superseded-by` link |
+| **Deprecated** | Contract withdrawn, no successor (terminal) | `deprecated` date, rationale in the history entry's `reason` |
 
 **Valid transitions (forward-only, may skip intermediate stages):**
 
@@ -117,14 +125,33 @@ Accepted ──→ AC Defined ──→ In Progress ──→ Tests Passing ─�
 Superseded    Superseded     Superseded       Superseded        Superseded
 ```
 
+*(The diagram draws only the `Superseded` exits; `Deprecated` exits from the
+same states plus `Deferred`, omitted above for legibility. The bullet list
+below is the normative table.)*
+
 - `Proposed` → `Accepted` | `Deferred` | `Will Not Implement`
-- `Deferred` → `Accepted` | `Will Not Implement`
-- `Accepted` → `AC Defined` | `In Progress` | `Superseded`
-- `AC Defined` → `In Progress` | `Tests Passing` | `Superseded`
-- `In Progress` → `Tests Passing` | `Implemented` | `Superseded`
-- `Tests Passing` → `Implemented` | `Superseded`
-- `Implemented` → `Superseded`
-- `Will Not Implement`, `Superseded` — terminal
+- `Deferred` → `Accepted` | `Will Not Implement` | `Deprecated`
+- `Accepted` → `AC Defined` | `In Progress` | `Superseded` | `Deprecated`
+- `AC Defined` → `In Progress` | `Tests Passing` | `Superseded` | `Deprecated`
+- `In Progress` → `Tests Passing` | `Implemented` | `Superseded` | `Deprecated`
+- `Tests Passing` → `Implemented` | `Superseded` | `Deprecated`
+- `Implemented` → `Superseded` | `Deprecated`
+- `Will Not Implement`, `Superseded`, `Deprecated` — terminal
+
+An ADR deprecation withdraws a *decision*; a spec deprecation withdraws a
+*contract* — its acceptance criteria stop being promises the code must keep,
+without naming a successor (`Superseded` requires one) and without claiming the
+work was never wanted (`Will Not Implement` is only reachable before
+acceptance). Reachable from `Deferred` because a parked spec's subject can be
+deleted from the tree while it waits, which is how SPEC-179 spent months
+describing an app that no longer existed.
+
+Added 2026-08-20 during the convergence effort, alongside an optional `reason`
+field on history entries: transitions like a deprecation or a rollback out of
+`Implemented` carry their motivation on the entry itself, because a document
+can be rolled back more than once and a single document-level field keeps only
+the latest story. (`Blocked` and `Abandoned`, enum members no transition ever
+admitted and no document ever used, were removed the same day.)
 
 ---
 
