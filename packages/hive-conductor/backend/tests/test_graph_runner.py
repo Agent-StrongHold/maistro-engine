@@ -657,8 +657,18 @@ async def test_execute_dag_streaming_yields_full_lifecycle(
     class _Result:
         total_cycles = 1
         node_results: ClassVar = [_NR()]
+        blackboard = None
 
-    async def _run_graph(**kw: Any) -> Any:
+    async def _run_graph(task: Any, llm_call: Any, **kw: Any) -> Any:
+        # Pin the real call shape: a GraphTask carrying the topology as
+        # graph_config. The previous stub accepted **kw only, which is how a
+        # production call using the historical task=str/config=/blackboard=
+        # kwargs (a TypeError against the real signature) stayed green here.
+        from maistro.graph.types import GraphTask
+
+        assert isinstance(task, GraphTask)
+        assert task.graph_config is not None
+        assert task.graph_config.entry == "n1"
         return _Result()
 
     import maistro.graph.executor as exec_mod
@@ -680,12 +690,45 @@ async def test_execute_dag_streaming_yields_full_lifecycle(
     assert statuses == ["started", "node_complete", "completed"]
 
 
+async def test_execute_dag_streaming_runs_a_real_graph_end_to_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No run_graph stub: the stream must survive core's actual signature.
+
+    This is the test that would have caught the historical call shape
+    (task=str/config=/blackboard=) raising TypeError on every invocation and
+    surfacing as a generic `failed` event.
+    """
+    import services.graph_runner as gr
+
+    async def _fake_llm(*a: Any, **kw: Any) -> str:
+        return "node output"
+
+    monkeypatch.setattr(gr, "_build_llm_call", lambda *a, **kw: _fake_llm)
+
+    events = []
+    async for ev in gr.execute_dag_streaming(
+        {
+            "name": "real",
+            "description": "run one worker node",
+            "nodes": [{"id": "n1", "role": "worker", "name": "W"}],
+            "edges": [],
+            "entry_node": "n1",
+        }
+    ):
+        events.append(ev)
+    statuses = [e["status"] for e in events]
+    assert statuses[0] == "started"
+    assert statuses[-1] == "completed", events
+    assert "failed" not in statuses, events
+
+
 async def test_execute_dag_streaming_yields_failed_on_exception(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import services.graph_runner as gr
 
-    async def _boom(**kw: Any) -> Any:
+    async def _boom(*a: Any, **kw: Any) -> Any:
         raise RuntimeError("synthetic")
 
     import maistro.graph.executor as exec_mod

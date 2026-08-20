@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import time
+
+import pytest
 
 from maistro.graph.events import GraphEvent
 from maistro.graph.node import (
@@ -28,6 +31,8 @@ from maistro.graph.types import (
     ToolEvaluation,
 )
 from maistro.resilience.backoff import BackoffConfig
+from maistro.resilience.rate_coordination import RateLimitCoordinator
+from maistro.resilience.retry_policy import OperationStage
 
 # --- module-level helpers ----------------------------------------------------
 
@@ -636,3 +641,86 @@ def test_beam_candidate_defaults() -> None:
     assert candidate.parsed_output is None
     assert candidate.score == 0.0
     assert candidate.error is None
+
+
+class TestStagePolicyAndRateCoordination:
+    """Wiring contracts for ADR-066 IMP-008/IMP-009 on the node retry loop:
+    the stage's RetryPolicy caps retries alongside max_retries, and a 429's
+    Retry-After is published so sibling nodes wait instead of re-discovering
+    the same limit one node at a time."""
+
+    @pytest.mark.ac("ADR-066/AC-31")
+    @pytest.mark.ac("ADR-066/AC-33")
+    async def test_stage_policy_caps_retries_below_a_large_max_retries(self) -> None:
+        node = _planner_node(max_retries=10)
+        attempts = 0
+
+        async def llm_call(*args: object, **kwargs: object) -> str:
+            nonlocal attempts
+            attempts += 1
+            raise TimeoutError("connection timed out, please retry")
+
+        await node.execute(llm_call, backoff_config=BackoffConfig(base_delay=0.001, max_delay=0.01))
+        assert node.phase == NodePhase.FAILED
+        # EVALUATE allows two retries (three attempts) no matter how large the
+        # caller's max_retries is — the tighter bound wins.
+        assert attempts == 3
+
+    @pytest.mark.ac("ADR-066/AC-35")
+    async def test_write_stage_never_retries(self) -> None:
+        node = _planner_node(max_retries=3, stage=OperationStage.WRITE)
+        attempts = 0
+
+        async def llm_call(*args: object, **kwargs: object) -> str:
+            nonlocal attempts
+            attempts += 1
+            raise TimeoutError("connection timed out, please retry")
+
+        await node.execute(llm_call, backoff_config=BackoffConfig(base_delay=0.001, max_delay=0.01))
+        assert node.phase == NodePhase.FAILED
+        assert attempts == 1
+
+    @pytest.mark.ac("ADR-066/AC-23")
+    async def test_rate_limit_with_retry_after_publishes_reset(self) -> None:
+        coordinator = RateLimitCoordinator()
+        node = _planner_node(max_retries=1, model="m-shared", rate_coordinator=coordinator)
+
+        class _RateLimitError(RuntimeError):
+            # The classifier reads a status_code attribute (the shape real
+            # provider clients raise), not the message text.
+            status_code = 429
+
+        async def llm_call(*args: object, **kwargs: object) -> str:
+            raise _RateLimitError("rate limit exceeded, retry after 30 seconds")
+
+        await node.execute(llm_call, backoff_config=BackoffConfig(base_delay=0.001, max_delay=0.01))
+        assert coordinator.is_rate_limited("m-shared")
+        reset = coordinator.get_reset_time("m-shared")
+        assert reset is not None and reset > time.time()
+
+    async def test_preflight_waits_out_a_recorded_limit(self) -> None:
+        coordinator = RateLimitCoordinator()
+        coordinator.record_rate_limit("m-shared", time.time() + 0.05)
+        node = _planner_node(model="m-shared", rate_coordinator=coordinator)
+
+        async def llm_call(*args: object, **kwargs: object) -> str:
+            return VALID_PLAN_JSON
+
+        start = time.monotonic()
+        await node.execute(llm_call)
+        waited = time.monotonic() - start
+        assert node.phase == NodePhase.SUCCEEDED
+        assert waited >= 0.04, f"preflight did not wait out the recorded reset ({waited:.3f}s)"
+
+    async def test_unlimited_model_is_not_delayed(self) -> None:
+        coordinator = RateLimitCoordinator()
+        coordinator.record_rate_limit("some-other-model", time.time() + 30)
+        node = _planner_node(model="m-free", rate_coordinator=coordinator)
+
+        async def llm_call(*args: object, **kwargs: object) -> str:
+            return VALID_PLAN_JSON
+
+        start = time.monotonic()
+        await node.execute(llm_call)
+        assert node.phase == NodePhase.SUCCEEDED
+        assert time.monotonic() - start < 1.0
