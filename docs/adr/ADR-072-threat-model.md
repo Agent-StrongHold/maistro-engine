@@ -58,7 +58,7 @@ not "ask the model to behave."
 | Asset | Why | Guarded by |
 |-------|-----|-----------|
 | Conductor Seed / derived keys | Root of all signing + wallets | ADR-021/022/026 (HD, hardware, immutable CA) |
-| Provider credentials | Money + data access | ADR-063 pool, ADR-064 redaction, vault |
+| Provider credentials | Money + data access | ADR-064 redaction, vault. (ADR-063's pool/rotation is library-complete but wired into no caller — no multi-key source exists; do not count it as an active control until Provider/Invocation convergence roots it) |
 | Audit log / VCs | Integrity of the record | ADR-024 signed VCs; tamper-evidence (open, ADR-068) |
 | Sessions / user identity | Account takeover | ADR-068 authz; web-session ADR (banked) |
 | Memory (learnings/episodic) | Exfiltration / poisoning | ADR-013 scopes; PII tiers (ADR-055) |

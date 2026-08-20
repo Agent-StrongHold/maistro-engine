@@ -823,14 +823,46 @@ maistro/
 > partial proof stays `declared`, because a binding that claims more than its
 > test shows is the falsehood this measurement exists to end.
 >
-> Every bound criterion caps at `passing`, not `reachable`, and that is the
-> load-bearing finding: all six implementing modules — `graph.depth`,
-> `graph.compaction`, `graph.steering`, `resilience.rate_coordination`,
-> `resilience.retry_policy`, `resilience.context_probe` — sit in
-> `quality/reachability-baseline.json`. The whole P1 resilience layer is
-> built and green and wired into no entry point. The executor runs without
-> depth enforcement, without compaction, without steering, without rate
-> coordination, without stage-aware retries, and without context probing.
+> **Wiring update (2026-08-20).** Four of the six implementing modules now
+> execute on real paths and left the reachability baseline:
+>
+> - `graph.depth` was running all along — `agent_synth_dag`'s `can_spawn`
+>   guard enforces the recursion cap on the durable path — but its import
+>   chain went through an `importlib` loop over strings the AST-based
+>   scanner cannot see. The node-module imports are static now, and the
+>   depth cap has one source (`DEFAULT_MAX_DEPTH` in the depth module).
+> - `graph.compaction` runs in the durable executor's walk loop: before
+>   each frontier, an oversized blackboard snapshot is shrunk via the
+>   deterministic path and written back. The LLM summarization path stays
+>   unwired — the compactor takes a synchronous callable, the executor has
+>   no LLM handle, and `CompactionResult` byte accounting does not exist.
+> - `resilience.retry_policy` caps `NodeRun`'s retry loop by stage
+>   (default `EVALUATE`; the `llm_call` stage this ADR specifies does not
+>   exist in the shipped module), alongside the caller's `max_retries` —
+>   the tighter bound wins.
+> - `resilience.rate_coordination` is consulted before each node attempt
+>   and fed each classified 429's Retry-After, so sibling nodes wait out a
+>   recorded reset instead of rediscovering it. **In-process scope only**,
+>   keyed by model alias (this path has no model→provider resolver); the
+>   cross-process file backend, `check_before_call` wait-seconds API,
+>   `limit_type`, and read-side pruning remain unbuilt. Note the design's
+>   file schema uses `time.monotonic()`, which is not comparable across
+>   processes — the implementation's `time.time()` is the correct choice
+>   and the design text is the bug.
+>
+> Two modules stay in the baseline **deliberately**:
+>
+> - `graph.steering` is a thread-safe list with no producer (`GraphRun.steer`
+>   and any operator surface are unbuilt) and no consumer (no
+>   `_steering_guidance` reaches any prompt). Any import small enough to
+>   call "minimal wiring" would flip the reachability number while the
+>   feature stayed inert — the precise failure mode the ratchet exists to
+>   prevent. It waits for the feature build.
+> - `resilience.context_probe` is bookkeeping for a prober that does not
+>   exist (`ContextLengthProber`, error-parse, binary search, registry
+>   persistence are all unbuilt), and nothing on any path consumes a
+>   context length — `ModelConfig.context_window` is declared and never
+>   read. Wiring the cache without a consumer is a write-only dict.
 
 ### Feature: IMP-023 — Hierarchical Depth/Role System
 
