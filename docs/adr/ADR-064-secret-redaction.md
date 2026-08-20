@@ -336,23 +336,19 @@ maistro/security/
 
 ## Gherkin acceptance criteria
 
-> **Measurement note (2026-08-19).** These 44 scenarios are tagged `@AC-N` and
-> measured by `scripts/check-ac-state.py`. Thirty-five are proven end to end —
-> bound to passing tests over `maistro.security.redact`, which is reachable —
-> including the four nested-pattern-safety scenarios (AC-23, AC-31..34), which
-> got new tests and turned out already true of the implementation. Nine remain
-> `declared` because they name behaviour that does not exist yet:
->
-> - **AC-12..14** — a JSON-field pattern with a `[REDACTED_JSON_SECRET]` label;
->   no JSON-aware pattern exists (JSON-embedded secrets are caught only when an
->   inner pattern like `sk-` fires, which AC-31/32 prove).
-> - **AC-18** — OpenSSH key blocks; the private-key pattern matches
->   `(RSA|EC)?/generic` headers, `OPENSSH` is unverified.
-> - **AC-25** — username-only URL userinfo with `[REDACTED_URL_CREDENTIALS]`.
-> - **AC-35, AC-36** — the latency and backtracking bounds, unbenchmarked.
-> - **AC-42, AC-43** — Telegram bot tokens and Sentry DSNs, patterns not
->   implemented. These are real catalogue gaps in an Accepted security ADR,
->   worth their own focused change rather than a side-effect of tagging.
+> **Measurement note (2026-08-20).** All 44 scenarios are tagged `@AC-N`,
+> measured by `scripts/check-ac-state.py`, and bound to passing tests over
+> `maistro.security.redact`, which is reachable. The last nine closed in two
+> steps: AC-35/36 got the ratio-based scaling benchmarks alongside the
+> quadratic-pattern fixes, and the remaining catalogue gaps got their
+> patterns — AC-12..14 (`[REDACTED_JSON_SECRET]`, whole `"name": "value"`
+> pair consumed since the engine substitutes fixed strings), AC-25
+> (username-only userinfo, and the label corrected to this ADR's
+> `[REDACTED_URL_CREDENTIALS]`), AC-42 (Telegram bot tokens), AC-43 (Sentry
+> DSNs — ordered above the userinfo pattern, which also matches a DSN;
+> span-merge ties go to the earlier-listed pattern and this ADR requires the
+> DSN label). AC-18 needed no code: `OPENSSH ` was already inside the
+> private-key pattern's `[A-Z ]{0,32}` label prefix, now pinned by a test.
 
 ```gherkin
 Feature: Comprehensive secret redaction

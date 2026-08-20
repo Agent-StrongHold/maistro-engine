@@ -190,6 +190,22 @@ class TestRedactPrivateKeys:
         assert "[REDACTED_PRIVATE_KEY]" in result
         assert "FAKEGENERICKEY" not in result
 
+    @pytest.mark.ac("ADR-064/AC-18")
+    def test_openssh_private_key(self):
+        # No dedicated pattern needed: `OPENSSH ` fits the existing
+        # `[A-Z ]{0,32}` label prefix and the body is base64-and-whitespace.
+        # Concatenated so no source line carries a full BEGIN marker — a
+        # contiguous key block is a real gitleaks hit even when invented.
+        key_block = (
+            "-----BEGIN OPENSSH "
+            + "PRIVATE KEY-----\nbase64data\n"
+            + "-----END OPENSSH "
+            + "PRIVATE KEY-----"
+        )
+        result = redact(key_block)
+        assert "[REDACTED_PRIVATE_KEY]" in result
+        assert "base64data" not in result
+
     @pytest.mark.ac("ADR-064/AC-30")
     def test_private_key_in_context(self):
         key_block = (
@@ -256,13 +272,19 @@ class TestRedactURLUserinfo:
     @pytest.mark.ac("ADR-064/AC-24")
     def test_https_url_with_creds(self):
         result = redact("https://fakeuser:fakepass@example.com/path")
-        assert "[REDACTED_URL_USERINFO]" in result
+        assert "[REDACTED_URL_CREDENTIALS]" in result
         assert "fakepass" not in result
 
     def test_ftp_url_with_creds(self):
         result = redact("ftp://fakeuser:fakepass@ftp.example.com")
-        assert "[REDACTED_URL_USERINFO]" in result
+        assert "[REDACTED_URL_CREDENTIALS]" in result
         assert "fakepass" not in result
+
+    @pytest.mark.ac("ADR-064/AC-25")
+    def test_username_only_userinfo(self):
+        result = redact("https://admin@api.example.com/v1/endpoint")
+        assert "[REDACTED_URL_CREDENTIALS]" in result
+        assert "admin@" not in result
 
     @pytest.mark.ac("ADR-064/AC-39")
     def test_url_without_creds_unchanged(self):
@@ -299,6 +321,69 @@ class TestRedactQueryParams:
     def test_non_secret_param_unchanged(self):
         url = "https://example.com?page=2&sort=name"
         assert redact(url) == url
+
+
+class TestRedactJSONFields:
+    """ADR-064 section 3 — a JSON field whose name marks the value sensitive.
+
+    The whole `"name": "value"` pair is consumed (the engine substitutes
+    fixed strings, no backreferences); AC-12..14 require the label present
+    and the value gone, not the key preserved.
+    """
+
+    @pytest.mark.ac("ADR-064/AC-12")
+    def test_json_password_field(self):
+        result = redact('{"username": "admin", "password": "s3cret!", "role": "user"}')
+        assert "[REDACTED_JSON_SECRET]" in result
+        assert "s3cret!" not in result
+        assert '"username": "admin"' in result
+
+    @pytest.mark.ac("ADR-064/AC-13")
+    def test_json_api_key_field(self):
+        key = "sk-" + "proj-" + "1234567890abcdef"
+        result = redact('{"api_key": "' + key + '", "model": "gpt-4"}')
+        assert "[REDACTED_JSON_SECRET]" in result
+        assert "sk-" + "proj-" not in result
+        assert '"model": "gpt-4"' in result
+
+    @pytest.mark.ac("ADR-064/AC-14")
+    def test_json_non_sensitive_fields_preserved(self):
+        text = '{"name": "agent-1", "status": "running"}'
+        assert redact(text) == text
+
+    def test_bare_key_and_auth_are_not_sensitive_names(self):
+        # "monkey" and "author" would false-positive if bare `key`/`auth`
+        # were in the alternation — pin that they are not.
+        text = '{"monkey": "bongo", "author": "Jane Doe"}'
+        assert redact(text) == text
+
+
+class TestRedactTelegramSentry:
+    @pytest.mark.ac("ADR-064/AC-42")
+    def test_telegram_bot_token(self):
+        token = "123456789" + ":" + "AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
+        result = redact("bot token is " + token)
+        assert "[REDACTED_TELEGRAM_TOKEN]" in result
+        assert "AAHdqTcvCH1" not in result
+
+    @pytest.mark.ac("ADR-064/AC-43")
+    def test_sentry_dsn(self):
+        dsn = "https://" + "abc123def456" + "@o123456.ingest.sentry.io/789012"
+        result = redact("SENTRY_DSN set to " + dsn)
+        assert "[REDACTED_SENTRY_DSN]" in result
+        assert "abc123def456" not in result
+
+    def test_sentry_dsn_with_region(self):
+        dsn = "https://" + "deadbeef0123" + "@o42.ingest.us.sentry.io/1"
+        result = redact(dsn)
+        assert "[REDACTED_SENTRY_DSN]" in result
+        assert "deadbeef0123" not in result
+
+    def test_timestamp_colon_pair_not_a_telegram_token(self):
+        # A digit run followed by a colon is common in logs; without the
+        # `AA` discriminator this would be a false positive.
+        text = "1692500000:reconnect attempt 3"
+        assert redact(text) == text
 
 
 class TestRedactMultipleSecrets:
@@ -436,6 +521,13 @@ class TestRedactScaling:
             ("query key repeat", lambda n: "?" + "key" * (n // 3)),
             ("query apikey repeat", lambda n: "?" + "api_key" * (n // 7)),
             ("begin blocks without end", lambda n: "-----BEGIN RSA PRIVATE KEY-----\n" * (n // 32)),
+            # Left-edge shapes for the three patterns added after the fix:
+            # a digit run ending in a colon (telegram), a hex run (sentry
+            # DSN key), and repeated sensitive field names with no closing
+            # value quote (JSON field).
+            ("digit run with colon", lambda n: "1" * n + ":AA"),
+            ("hex run", lambda n: "a1" * (n // 2)),
+            ("json field spam", lambda n: '"token": "' * (n // 10)),
         ],
     )
     def test_cost_grows_linearly_with_input(self, label, build):

@@ -15,7 +15,7 @@
     "specs_awaiting_retrofit": 139,
     "criteria_declared": 462,
     "criteria_annotated": 191,
-    "markers_found": 171,
+    "markers_found": 180,
     "markers_without_criterion": 2,
     "criteria_claimed_but_unproven": 0,
     "gherkin_criteria": 215,
@@ -5049,7 +5049,7 @@
       "id": "SPEC-179",
       "file": "docs/specs/SPEC-179-flutter-gateway-node.md",
       "layer": "UserClient",
-      "declared_status": "Deferred",
+      "declared_status": "Deprecated",
       "implements": [],
       "has_ac_heading": true,
       "criteria_total": 3,
@@ -9091,20 +9091,26 @@
         {
           "id": "ADR-064/AC-12",
           "module": "maistro.security.redact",
-          "covered_by": [],
-          "rung": "declared"
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
         },
         {
           "id": "ADR-064/AC-13",
           "module": "maistro.security.redact",
-          "covered_by": [],
-          "rung": "declared"
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
         },
         {
           "id": "ADR-064/AC-14",
           "module": "maistro.security.redact",
-          "covered_by": [],
-          "rung": "declared"
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
         },
         {
           "id": "ADR-064/AC-15",
@@ -9133,8 +9139,10 @@
         {
           "id": "ADR-064/AC-18",
           "module": "maistro.security.redact",
-          "covered_by": [],
-          "rung": "declared"
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
         },
         {
           "id": "ADR-064/AC-19",
@@ -9187,8 +9195,10 @@
         {
           "id": "ADR-064/AC-25",
           "module": "maistro.security.redact",
-          "covered_by": [],
-          "rung": "declared"
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
         },
         {
           "id": "ADR-064/AC-26",
@@ -9265,14 +9275,18 @@
         {
           "id": "ADR-064/AC-35",
           "module": "maistro.security.redact",
-          "covered_by": [],
-          "rung": "declared"
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
         },
         {
           "id": "ADR-064/AC-36",
           "module": "maistro.security.redact",
-          "covered_by": [],
-          "rung": "declared"
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
         },
         {
           "id": "ADR-064/AC-37",
@@ -9317,14 +9331,18 @@
         {
           "id": "ADR-064/AC-42",
           "module": "maistro.security.redact",
-          "covered_by": [],
-          "rung": "declared"
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
         },
         {
           "id": "ADR-064/AC-43",
           "module": "maistro.security.redact",
-          "covered_by": [],
-          "rung": "declared"
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
         },
         {
           "id": "ADR-064/AC-44",
@@ -9337,7 +9355,7 @@
       ],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "declared"
+      "tier": "reachable"
     },
     {
       "id": "ADR-065",
