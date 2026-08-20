@@ -30,6 +30,19 @@ tests: []
 source:
   - packages/maistro-core/src/maistro/projects
   - packages/maistro-core/src/maistro/security
+ac-modules:
+  AC-1: maistro.projects.authorization
+  AC-2: maistro.projects.authorization
+  AC-3: maistro.projects.authorization
+  AC-4: maistro.projects.authorization
+  AC-5: maistro.projects.authorization
+  AC-6: maistro.projects.authorization
+  AC-7: maistro.projects.authorization
+  AC-8: maistro.projects.authorization
+  AC-9: maistro.projects.authorization
+  AC-10: maistro.personas.model
+  AC-11: maistro.projects.authorization
+  AC-12: maistro.capabilities.registry
 layer: Governance
 owners:
   - '@BlakeMatthews-dev'
@@ -102,18 +115,85 @@ Before a Binding/Provider/Invocation uses a Project-scoped resource, the authori
 
 ## Acceptance Criteria
 
-1. `Workspace: member` plus `Project A: contributor` yields both grant sets inside A and only Workspace grants outside A.
-2. A grant in Project A never appears in sibling Project B.
-3. A child Project may grant `publish` even when Workspace grants do not include `publish`, and that grant remains inside the child subtree.
-4. A Root deny of `publish` prevents a descendant `publish` grant from becoming effective.
-5. An object-specific deny beats applicable Workspace/Project grants.
-6. A child-scoped Credential remains unavailable from its parent even when the principal has a broad credential-use action grant.
-7. A principal with `publish` but without delegation authority cannot grant `publish` to another principal.
-8. A Project administrator with explicit `grant:publish` for the Project can grant `publish` inside that Project scope but not in a sibling.
-9. Cross-Workspace Project/grant references are rejected.
-10. Persona modifications produce identical authorization results for identical membership/grant/deny inputs.
-11. Role bundles expand into granular grants and can still be constrained by explicit denies.
-12. Binding/Provider fallback cannot select a resource outside the authorized/visible candidate set.
+```gherkin
+Feature: Hierarchical permissions
+
+  @AC-1
+  Scenario: Grants accumulate inside their scope only
+    Given a principal with Workspace member and Project A contributor
+    When effective grants are resolved inside Project A
+    Then both grant sets apply
+    But outside Project A only the Workspace grants apply
+
+  @AC-2
+  Scenario: A sibling Project sees no grant from its sibling
+    Given a grant made in Project A
+    When grants are resolved in sibling Project B
+    Then the grant from A does not appear
+
+  @AC-3
+  Scenario: A child may grant authority its parent lacks
+    Given a Workspace whose grants exclude publish
+    When child Project A grants publish
+    Then publish is effective inside A's subtree
+    And it is not effective outside that subtree
+
+  @AC-4
+  Scenario: A Root deny beats a descendant grant
+    Given a Root deny of publish
+    When a descendant Project grants publish
+    Then publish is not effective
+
+  @AC-5
+  Scenario: An object-specific deny beats scope grants
+    Given applicable Workspace and Project grants for an action
+    When an object-specific deny covers that object
+    Then the action is refused on it
+
+  @AC-6
+  Scenario: A child Credential is invisible to its parent
+    Given a Credential scoped to a child Project
+    When a principal with a broad credential-use grant resolves it from the parent
+    Then the Credential is unavailable
+
+  @AC-7
+  Scenario: Holding a permission is not authority to delegate it
+    Given a principal with publish but no delegation authority
+    When it grants publish to another principal
+    Then the grant is refused
+
+  @AC-8
+  Scenario: Delegation authority is itself scoped
+    Given a Project administrator with grant:publish for Project A
+    When it grants publish inside A
+    Then the grant succeeds
+    But the same grant in a sibling Project is refused
+
+  @AC-9
+  Scenario: Cross-Workspace references are rejected
+    Given a Project or grant reference naming another Workspace
+    When it is resolved
+    Then it is rejected
+
+  @AC-10
+  Scenario: Persona changes never change authorization
+    Given fixed membership, grant and deny inputs
+    When the Persona is modified
+    Then authorization resolves identically
+
+  @AC-11
+  Scenario: Role bundles expand and remain deniable
+    Given a role bundle assigned to a principal
+    When authorization resolves
+    Then the bundle expands into granular grants
+    And an explicit deny still constrains them
+
+  @AC-12
+  Scenario: Fallback cannot escape the authorized candidate set
+    Given a Binding whose Provider fails
+    When fallback selects a replacement
+    Then the replacement is inside the authorized and visible candidate set
+```
 
 ## Non-goals
 

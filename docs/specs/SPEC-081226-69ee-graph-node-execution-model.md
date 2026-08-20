@@ -31,6 +31,19 @@ tests: []
 source:
   - packages/maistro-core/src/maistro/graph
   - packages/maistro-core/src/maistro/runs
+ac-modules:
+  AC-1: maistro.graph.definitions
+  AC-2: maistro.graph.definitions
+  AC-3: maistro.graph.definitions
+  AC-4: maistro.graph.definitions
+  AC-5: maistro.graph.dag_validator
+  AC-6: maistro.graph.definitions
+  AC-7: maistro.runs.store
+  AC-8: maistro.runs.store
+  AC-9: maistro.graph.node_types
+  AC-10: maistro.runs.service
+  AC-11: maistro.runs.service
+  AC-12: maistro.runs.service
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
@@ -101,19 +114,94 @@ Package-specific types MAY extend the registry.
 
 ## Acceptance Criteria
 
-1. A one-node project-scoped Graph can be captured into a Run snapshot.
-2. Editing or moving a Graph after Run creation does not change the snapshot, its materialized definition, or captured Project identity.
-3. A Graph without Workspace or Project scope is rejected.
-4. A Graph whose Project belongs to another Workspace is rejected by the canonical persistence/service boundary.
-5. Duplicate Node IDs and Edges targeting Nodes outside the Graph are rejected.
-6. Workspace-wide GraphTemplate instantiation requires a destination Project and produces independent topology/provenance.
-7. NodeRun creation rejects a Node ID absent from the captured snapshot.
-8. Repeated execution of the same Node creates distinct NodeRuns under the same Run.
-9. A NodeType test proves Runtime receives ready work without importing/interpreting graph predicates.
-10. A subgraph child Run inherits the parent's Project by default.
-11. Explicit same-Workspace cross-Project child execution records the destination Project and requires authorization at the service boundary.
-12. Cross-Workspace child creation is rejected.
-13. Architecture fitness checks can detect a NodeType executor that attempts to own Run persistence.
+```gherkin
+Feature: Graph and Node execution model
+
+  @AC-1
+  Scenario: A one-node Graph captures into a Run snapshot
+    Given a project-scoped Graph with one Node
+    When a Run is created from it
+    Then the Run holds a snapshot of that Graph
+
+  @AC-2
+  Scenario: The snapshot is immune to later edits
+    Given a Run created from a Graph
+    When the Graph is edited or moved to another Project
+    Then the Run's snapshot, its materialized definition, and its captured Project identity are unchanged
+
+  @AC-3
+  Scenario: An unscoped Graph is rejected
+    Given a Graph with no Workspace or no Project
+    When it is persisted
+    Then it is rejected
+
+  @AC-4
+  Scenario: A Graph cannot point at a Project in another Workspace
+    Given a Graph whose Project belongs to a different Workspace
+    When it reaches the canonical persistence boundary
+    Then it is rejected
+
+  @AC-5
+  Scenario Outline: Malformed topology is rejected
+    Given a Graph containing <defect>
+    When it is validated
+    Then it is rejected
+
+    Examples:
+      | defect                              |
+      | duplicate Node IDs                  |
+      | an Edge targeting an external Node  |
+
+  @AC-6
+  Scenario: Template instantiation needs a destination and yields independence
+    Given a Workspace-wide GraphTemplate
+    When it is instantiated without a destination Project
+    Then instantiation is refused
+    But with a destination Project it produces independent topology carrying provenance
+
+  @AC-7
+  Scenario: NodeRun creation rejects an unknown Node
+    Given a Run whose snapshot does not contain a given Node ID
+    When a NodeRun is created for that Node ID
+    Then it is rejected
+
+  @AC-8
+  Scenario: Re-executing a Node creates distinct NodeRuns
+    Given a Node executed once under a Run
+    When the same Node executes again in that Run
+    Then a second, distinct NodeRun exists under the same Run
+
+  @AC-9
+  Scenario: The Runtime receives ready work without interpreting predicates
+    Given a NodeType under test
+    When it hands work to the Runtime
+    Then the Runtime neither imports nor interprets graph predicates
+
+  @AC-10
+  Scenario: A subgraph child Run inherits the Project
+    Given a Run in a Project
+    When a subgraph child Run is created with no destination given
+    Then it records the parent's project_id
+
+  @AC-11
+  Scenario: Cross-Project child execution is explicit and authorized
+    Given a destination Project in the same Workspace
+    When cross-Project child execution is requested explicitly
+    Then the destination Project is recorded
+    And authorization is required at the service boundary
+
+  @AC-12
+  Scenario: Cross-Workspace child creation is rejected
+    Given a destination Project in a different Workspace
+    When child creation is requested
+    Then it is rejected
+
+  @AC-13
+  Scenario: A NodeType executor cannot own Run persistence
+    Given the architecture fitness checks
+    When a NodeType executor writes Run persistence directly
+    Then the checks detect it
+```
 
 ## Non-goals
 

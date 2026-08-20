@@ -31,6 +31,25 @@ tests: []
 source:
   - packages/maistro-core/src/maistro/runs
   - packages/maistro-core/src/maistro/runtime
+ac-modules:
+  AC-1: maistro.runs.model
+  AC-2: maistro.runs.model
+  AC-3: maistro.runs.model
+  AC-4: maistro.runs.model
+  AC-5: maistro.graph.durable_runs.attempt_executor
+  AC-6: maistro.graph.durable_runs.attempt_executor
+  AC-7: maistro.graph.durable_runs.attempt_executor
+  AC-8: maistro.graph.durable_runs.attempt_executor
+  AC-9: maistro.graph.durable_runs.executor
+  AC-10: maistro.runs.model
+  AC-11: maistro.runs.model
+  AC-12: maistro.runs.model
+  AC-13: maistro.runs.service
+  AC-14: maistro.runs.service
+  AC-15: maistro.graph.durable_runs.executor
+  AC-16: maistro.runs.model
+  AC-17: maistro.runs.service
+  AC-18: maistro.runs.service
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
@@ -173,24 +192,128 @@ Domain and product callers SHOULD enter universal execution through a canonical 
 
 ## Acceptance Criteria
 
-1. Unit tests cover every allowed Run transition and representative illegal/terminal transitions.
-2. Run creation rejects a Graph snapshot whose Workspace or Project differs from declared Run scope.
-3. A failed Attempt retried by policy produces Attempt ordinal +1 with the same Run/NodeRun IDs.
-4. A resumable stale NodeRun creates a new Attempt referencing its Checkpoint, not a new Run.
-5. Runtime is invoked with `attempt_id`; two Attempts under one Run can execute concurrently without execution-ID collision.
-6. Runtime deadline expiry records a timed-out Attempt and reconciles logical state according to policy.
-7. Executor-raised `TimeoutError` records a failed Attempt unless domain policy explicitly reclassifies it.
-8. Cancelling active work ends with Attempt `cancelled` and reconciled NodeRun/Run state; recovery sees no durable phantom `running` worker.
-9. A HITL-like wait survives process restart with no live worker and resumes through a new Attempt.
-10. A child Run inherits the parent Project by default.
-11. Explicit same-Workspace cross-Project child Run creation records the destination `project_id` and passes through destination authorization.
-12. Cross-Workspace child Run creation fails.
-13. Accepting a WorkRequest produces a Run and task/queue status becomes a projection/reference.
-14. Schedule -> Run uses the same lifecycle service as manual execution.
-15. GraphRun/durable adapters preserve conditional traversal, fanout/fanin, retries, and pause/resume while using canonical IDs.
-16. Persisted Run/NodeRun/Attempt history reloads with identical logical/physical relationships.
-17. Migrated execution entry paths cannot complete workload without a canonical Run.
-18. The canonical execution service can execute `Graph -> Run -> NodeRun -> Attempt -> ExecutionRuntime` for one Node without importing graph traversal, authorization, Binding/Provider selection, or product-specific lifecycle code.
+```gherkin
+Feature: Run / NodeRun / Attempt lifecycle
+
+  @AC-1
+  Scenario: Every allowed transition is covered, and illegal ones are refused
+    Given the Run lifecycle state machine
+    When each allowed transition is exercised
+    Then it succeeds
+    And a representative illegal transition and a transition out of a terminal state are both refused
+
+  @AC-2
+  Scenario: Run creation refuses a snapshot from another scope
+    Given a declared Run scope
+    When a Graph snapshot with a different workspace_id or project_id is supplied
+    Then Run creation is rejected
+
+  @AC-3
+  Scenario: Policy retry keeps identity and adds an ordinal
+    Given a failed Attempt under a Run and NodeRun
+    When policy retries it
+    Then the new Attempt has ordinal +1
+    And the run_id and node_run_id are unchanged
+
+  @AC-4
+  Scenario: A stale resumable NodeRun resumes from its Checkpoint
+    Given a resumable NodeRun whose Attempt went stale
+    When recovery runs
+    Then a new Attempt is created referencing that Checkpoint
+    And no new Run is created
+
+  @AC-5
+  Scenario: Concurrent Attempts under one Run do not collide
+    Given two Attempts of one Run dispatched concurrently
+    When the Runtime is invoked for each with its attempt_id
+    Then both execute with distinct execution IDs
+
+  @AC-6
+  Scenario: Runtime deadline expiry is recorded and reconciled
+    Given an Attempt that exceeds the Runtime deadline
+    When the deadline expires
+    Then the Attempt is recorded as timed out
+    And logical state is reconciled according to policy
+
+  @AC-7
+  Scenario: An executor TimeoutError is a failure, not a Runtime timeout
+    Given an executor that raises TimeoutError
+    When the Attempt runs
+    Then the Attempt is recorded failed
+    And it is reclassified only when domain policy says so explicitly
+
+  @AC-8
+  Scenario: Cancellation leaves no phantom running worker
+    Given active work under an Attempt
+    When it is cancelled
+    Then the Attempt ends cancelled
+    And NodeRun and Run state are reconciled
+    And recovery finds no durable record of a running worker
+
+  @AC-9
+  Scenario: A wait survives restart with no live worker
+    Given a NodeRun paused awaiting human approval
+    When the process restarts with no live worker
+    Then the wait is still pending
+    And it resumes through a new Attempt
+
+  @AC-10
+  Scenario: A child Run inherits its parent Project
+    Given a Run in a Project
+    When a child Run is created with no destination specified
+    Then the child records the parent's project_id
+
+  @AC-11
+  Scenario: Cross-Project child Runs are explicit and authorized
+    Given a Run in one Project and a destination Project in the same Workspace
+    When a child Run is created explicitly against the destination
+    Then the child records the destination project_id
+    And destination authorization was consulted
+
+  @AC-12
+  Scenario: Cross-Workspace child Run creation fails
+    Given a Run in one Workspace
+    When a child Run is created against a Project in another Workspace
+    Then creation fails
+
+  @AC-13
+  Scenario: Accepting a WorkRequest produces a Run
+    Given an accepted WorkRequest
+    When it is admitted
+    Then a Run exists for it
+    And task/queue status reads as a projection of that Run rather than its own lifecycle
+
+  @AC-14
+  Scenario: A scheduled execution uses the same lifecycle service as a manual one
+    Given a Schedule due to fire
+    When it fires
+    Then the Run is created through the same lifecycle service a manual execution uses
+
+  @AC-15
+  Scenario: Durable adapters preserve traversal semantics on canonical ids
+    Given a Graph using conditional traversal, fanout/fanin, retries and pause/resume
+    When it executes through the durable adapter
+    Then every one of those behaviours is preserved
+    And the execution is recorded against canonical Run, NodeRun and Attempt ids
+
+  @AC-16
+  Scenario: History reloads with identical relationships
+    Given persisted Run, NodeRun and Attempt history
+    When it is reloaded
+    Then the logical and physical relationships are identical to those written
+
+  @AC-17
+  Scenario: A migrated entry path cannot complete work without a Run
+    Given a migrated execution entry path
+    When workload is submitted through it
+    Then the workload cannot reach completion without a canonical Run
+
+  @AC-18
+  Scenario: The canonical execution service is independent of traversal and product code
+    Given the canonical execution service
+    When it executes one Node as Graph -> Run -> NodeRun -> Attempt -> ExecutionRuntime
+    Then it does so without importing graph traversal, authorization, Binding/Provider selection, or product-specific lifecycle code
+```
 
 ## Migration order
 

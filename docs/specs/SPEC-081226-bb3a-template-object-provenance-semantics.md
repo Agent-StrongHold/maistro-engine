@@ -29,6 +29,18 @@ tests:
   - packages/maistro-core/tests/test_graph_definitions.py
 source:
   - packages/maistro-core/src/maistro/graph/definitions.py
+ac-modules:
+  AC-1: maistro.graph.definitions
+  AC-2: maistro.graph.definitions
+  AC-3: maistro.graph.definitions
+  AC-4: maistro.graph.definitions
+  AC-5: maistro.graph.definitions
+  AC-6: maistro.graph.definitions
+  AC-7: maistro.graph.definitions
+  AC-8: maistro.personas.model
+  AC-9: maistro.graph.definitions
+  AC-10: maistro.graph.definitions
+  AC-12: maistro.graph.definitions
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
@@ -186,53 +198,92 @@ Promotion MUST be explicit and auditable according to applicable policy. Histori
 
 ## Acceptance Criteria
 
-### AC1. Node independence
+```gherkin
+Feature: Template / object provenance semantics
 
-Given `NodeTemplate T@1`, instantiate Node `N`, edit `N`, and verify `T@1` is byte/semantically unchanged and `N.source_template_*` still identifies `T@1`.
+  @AC-1
+  Scenario: Editing an instantiated Node leaves its Template untouched
+    Given a Node instantiated from NodeTemplate T@1
+    When the Node is edited
+    Then T@1 is semantically unchanged
+    And the Node still identifies T@1 through its source_template fields
 
-### AC2. Template update isolation
+  @AC-2
+  Scenario: Publishing a new version does not disturb existing objects
+    Given two Nodes instantiated from T@1
+    When T@2 is published
+    Then both Nodes are unchanged until an explicit update is invoked
 
-Given Nodes `N1` and `N2` instantiated from `T@1`, publish `T@2`, and verify both existing Nodes remain unchanged until an explicit update operation is invoked.
+  @AC-3
+  Scenario: Instantiation binds to an exact version
+    Given NodeTemplate versions T@1 and T@2
+    When one Node is instantiated from each
+    Then each materializes its own version's definition
+    And each carries that version and hash as provenance
 
-### AC3. New instantiation selects exact version
+  @AC-4
+  Scenario: Editing an instantiated Graph leaves its Template untouched
+    Given a Graph instantiated from GraphTemplate GT@1
+    When one Node and one Edge in the Graph are mutated
+    Then GT@1 is unchanged
 
-Instantiate one Node from `T@1` and another from `T@2`; verify each materializes the corresponding definition and carries the correct version/hash provenance.
+  @AC-5
+  Scenario: A GraphTemplate version pins its nested NodeTemplates
+    Given a published GraphTemplate that uses a NodeTemplate
+    When the NodeTemplate is updated afterward
+    Then re-instantiating the same GraphTemplate version produces the same effective graph definition as before
 
-### AC4. Graph independence
+  @AC-6
+  Scenario: Save-as-template creates a new identity and leaves the source alone
+    Given a customized Node
+    When it is saved as a new NodeTemplate
+    Then a new template identity and version exist
+    And their provenance identifies the source Node
+    And the Node itself is unchanged
 
-Instantiate Graph `G` from `GraphTemplate GT@1`, mutate one Node and one Edge in `G`, and verify `GT@1` remains unchanged.
+  @AC-7
+  Scenario: Publishing a version keeps the old one addressable
+    Given a customized object published as a new version of an existing template
+    When the new version exists
+    Then the previous version is still addressable and unchanged
 
-### AC5. Nested version pinning
+  @AC-8
+  Scenario: Persona catalog membership mutates nothing
+    Given a template in a Persona catalog
+    When it is added or removed from that catalog
+    Then the template content and every instantiated object are unchanged
 
-Publish a GraphTemplate that uses a NodeTemplate. Update the NodeTemplate afterward. Re-instantiating the existing GraphTemplate version MUST produce the same effective graph definition as before the NodeTemplate update.
+  @AC-9
+  Scenario: Execution state is not reusable semantic content
+    Given live Run, NodeRun or Attempt state supplied as template content
+    When canonical template validation runs
+    Then the state is rejected, or stripped into a non-template projection
 
-### AC6. Save Node as template
+  @AC-10
+  Scenario Outline: Legacy definitions import with provenance
+    Given an existing reusable <kind> definition
+    When it is projected into its canonical template representation
+    Then the result preserves source provenance
 
-Save a customized Node as a new NodeTemplate. Verify a new template identity/version is created, provenance identifies the source Node, and the Node itself is unchanged.
+    Examples:
+      | kind           |
+      | agent          |
+      | graph/workflow |
 
-### AC7. Publish new version
+  @AC-11
+  Scenario: Improvement produces candidates, never silent mutation
+    Given a published template version and an improvement path
+    When the path proposes an improvement
+    Then a candidate version is produced
+    And the published version is unchanged
+    And promotion creates a new explicit version only after the policy gate
 
-Publish a customized Node/Graph as a new version of an existing template. Verify the old version remains addressable and unchanged.
-
-### AC8. Persona availability is non-mutating
-
-Add/remove a template from a Persona catalog. Verify template content and existing instantiated objects are unchanged.
-
-### AC9. Runtime field rejection
-
-Canonical template validation rejects or strips into a non-template projection any live Run/NodeRun/Attempt state supplied as reusable semantic content.
-
-### AC10. Legacy definition migration
-
-At least one existing reusable agent definition and one existing graph/workflow definition can be projected/imported into canonical NodeTemplate/GraphTemplate representations with source provenance preserved.
-
-### AC11. RSI/Evolve candidate behavior
-
-An improvement path can produce a candidate template version without mutating the currently published version. Promotion creates a new explicit version only after the configured policy gate.
-
-### AC12. Reproducibility after restart
-
-Persist a template version and an instantiated object, restart/reload persistence, and verify both the immutable template snapshot and object source provenance resolve identically.
+  @AC-12
+  Scenario: Templates and provenance survive restart
+    Given a persisted template version and an object instantiated from it
+    When persistence is reloaded
+    Then the immutable template snapshot and the object's source provenance resolve identically
+```
 
 ## Migration guidance
 

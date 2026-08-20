@@ -27,6 +27,9 @@ contracts:
 tests: []
 source:
   - packages
+ac-modules:
+  AC-3: maistro.runs.service
+  AC-4: maistro.runs.service
 layer: Governance
 owners:
   - '@BlakeMatthews-dev'
@@ -82,16 +85,81 @@ At minimum CI SHOULD enforce:
 
 ## Acceptance Criteria
 
-1. Static/import tests prove `maistro-core` has no prohibited imports of Hive/Canvas/Design/Turing/RSI/Evolve/server application code.
-2. A specialized package can register/use a NodeType or Provider through a public contract without core importing that package.
-3. A server route integration test reaches canonical Workspace/Run service rather than constructing a private lifecycle record on a migrated path.
-4. A Hive migrated path produces the same canonical Run/Event history as the generic server path.
-5. Runtime import fitness test prevents graph predicate/readiness logic from moving into `maistro.runtime`.
-6. Bootstrap audit has explicit keep/migrate disposition for agent loop, model selector, sandbox, session, delivery and credentials.
-7. The `maistro-registry` -> `maistro-arch-governance` migration commit, when executed, regenerates the lockfile and passes package CLI/import tests before old paths are removed.
-8. Architecture fitness CI fails on an intentionally introduced forbidden dependency/lifecycle fixture.
-9. Reachability baseline decreases when duplicated product orchestration is migrated or removed.
-10. No specialized package loses valid domain behavior merely to reduce package count.
+```gherkin
+Feature: Package ownership and dependency direction
+
+  @AC-1
+  Scenario: Core does not import application packages
+    Given the maistro-core source
+    When its imports are analysed
+    Then it imports no Hive, Canvas, Design, Turing, RSI, Evolve or server application code
+
+  @AC-2
+  Scenario: A specialized package extends core without core knowing
+    Given a specialized package
+    When it registers a NodeType or Provider through the public contract
+    Then it is usable
+    And core does not import that package
+
+  @AC-3
+  Scenario: A migrated route reaches the canonical service
+    Given a migrated server route
+    When it handles a request
+    Then it reaches the canonical Workspace and Run service
+    And it constructs no private lifecycle record
+
+  @AC-4
+  Scenario: Hive and generic paths produce identical history
+    Given the same workload
+    When it runs through the Hive migrated path and through the generic server path
+    Then both produce the same canonical Run and Event history
+
+  @AC-5
+  Scenario: Graph readiness logic cannot move into the runtime
+    Given the runtime import fitness test
+    When graph predicate or readiness logic is added to maistro.runtime
+    Then the test fails
+
+  @AC-6
+  Scenario Outline: Every bootstrap area has an explicit disposition
+    Given the bootstrap audit
+    When <area> is reviewed
+    Then it carries an explicit keep or migrate disposition
+
+    Examples:
+      | area           |
+      | agent loop     |
+      | model selector |
+      | sandbox        |
+      | session        |
+      | delivery       |
+      | credentials    |
+
+  @AC-7
+  Scenario: The registry rename lands atomically
+    Given the maistro-registry to maistro-arch-governance migration
+    When the migration commit is executed
+    Then it regenerates the lockfile
+    And package CLI and import tests pass before the old paths are removed
+
+  @AC-8
+  Scenario: CI fails on a deliberately forbidden dependency
+    Given architecture fitness CI
+    When a forbidden dependency or lifecycle fixture is introduced on purpose
+    Then CI fails
+
+  @AC-9
+  Scenario: Migration shrinks the reachability baseline
+    Given duplicated product orchestration
+    When it is migrated or removed
+    Then the reachability baseline decreases
+
+  @AC-10
+  Scenario: Consolidation does not cost domain behavior
+    Given a specialized package with valid domain behavior
+    When packages are consolidated
+    Then that behavior is preserved rather than dropped to reduce package count
+```
 
 ## Non-goals
 

@@ -11,14 +11,14 @@
   "totals": {
     "specs": 174,
     "specs_with_ac_heading": 166,
-    "specs_with_ac_ids": 15,
-    "specs_awaiting_retrofit": 152,
-    "criteria_declared": 267,
-    "criteria_annotated": 55,
+    "specs_with_ac_ids": 26,
+    "specs_awaiting_retrofit": 141,
+    "criteria_declared": 401,
+    "criteria_annotated": 176,
     "markers_found": 164,
     "markers_without_criterion": 2,
     "criteria_claimed_but_unproven": 0,
-    "gherkin_criteria": 63,
+    "gherkin_criteria": 197,
     "scenarios_without_ac_tag": 64,
     "gherkin_parse_errors": 0,
     "completion_claims_contradicted": 6,
@@ -2460,19 +2460,130 @@
         "- maistro-engine#ADR-081226-034b"
       ],
       "has_ac_heading": true,
-      "criteria_total": 0,
-      "annotated": 0,
-      "gherkin_criteria": 0,
+      "criteria_total": 10,
+      "annotated": 2,
+      "gherkin_criteria": 10,
       "gherkin_parse_errors": [],
       "scenarios_without_ac_tag": [],
       "distribution": {
-        "declared": 0,
+        "declared": 10,
         "covered": 0,
         "passing": 0,
         "reachable": 0
       },
-      "tier": "none",
-      "criteria": []
+      "tier": "declared",
+      "criteria": [
+        {
+          "id": "SPEC-081226-034b/AC-1",
+          "claimed": false,
+          "module": null,
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Core does not import application packages"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-034b/AC-2",
+          "claimed": false,
+          "module": null,
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A specialized package extends core without core knowing"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-034b/AC-3",
+          "claimed": false,
+          "module": "maistro.runs.service",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A migrated route reaches the canonical service"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-034b/AC-4",
+          "claimed": false,
+          "module": "maistro.runs.service",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Hive and generic paths produce identical history"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-034b/AC-5",
+          "claimed": false,
+          "module": null,
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Graph readiness logic cannot move into the runtime"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-034b/AC-6",
+          "claimed": false,
+          "module": null,
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Every bootstrap area has an explicit disposition"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-034b/AC-7",
+          "claimed": false,
+          "module": null,
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "The registry rename lands atomically"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-034b/AC-8",
+          "claimed": false,
+          "module": null,
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "CI fails on a deliberately forbidden dependency"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-034b/AC-9",
+          "claimed": false,
+          "module": null,
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Migration shrinks the reachability baseline"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-034b/AC-10",
+          "claimed": false,
+          "module": null,
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Consolidation does not cost domain behavior"
+          ],
+          "rung": "declared"
+        }
+      ]
     },
     {
       "id": "SPEC-081226-69ee",
@@ -2483,19 +2594,163 @@
         "- maistro-engine#ADR-081226-69ee"
       ],
       "has_ac_heading": true,
-      "criteria_total": 0,
-      "annotated": 0,
-      "gherkin_criteria": 0,
+      "criteria_total": 13,
+      "annotated": 12,
+      "gherkin_criteria": 13,
       "gherkin_parse_errors": [],
       "scenarios_without_ac_tag": [],
       "distribution": {
-        "declared": 0,
+        "declared": 13,
         "covered": 0,
         "passing": 0,
         "reachable": 0
       },
-      "tier": "none",
-      "criteria": []
+      "tier": "declared",
+      "criteria": [
+        {
+          "id": "SPEC-081226-69ee/AC-1",
+          "claimed": false,
+          "module": "maistro.graph.definitions",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A one-node Graph captures into a Run snapshot"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-69ee/AC-2",
+          "claimed": false,
+          "module": "maistro.graph.definitions",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "The snapshot is immune to later edits"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-69ee/AC-3",
+          "claimed": false,
+          "module": "maistro.graph.definitions",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "An unscoped Graph is rejected"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-69ee/AC-4",
+          "claimed": false,
+          "module": "maistro.graph.definitions",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A Graph cannot point at a Project in another Workspace"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-69ee/AC-5",
+          "claimed": false,
+          "module": "maistro.graph.dag_validator",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Malformed topology is rejected"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-69ee/AC-6",
+          "claimed": false,
+          "module": "maistro.graph.definitions",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Template instantiation needs a destination and yields independence"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-69ee/AC-7",
+          "claimed": false,
+          "module": "maistro.runs.store",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "NodeRun creation rejects an unknown Node"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-69ee/AC-8",
+          "claimed": false,
+          "module": "maistro.runs.store",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Re-executing a Node creates distinct NodeRuns"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-69ee/AC-9",
+          "claimed": false,
+          "module": "maistro.graph.node_types",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "The Runtime receives ready work without interpreting predicates"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-69ee/AC-10",
+          "claimed": false,
+          "module": "maistro.runs.service",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A subgraph child Run inherits the Project"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-69ee/AC-11",
+          "claimed": false,
+          "module": "maistro.runs.service",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Cross-Project child execution is explicit and authorized"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-69ee/AC-12",
+          "claimed": false,
+          "module": "maistro.runs.service",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Cross-Workspace child creation is rejected"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-69ee/AC-13",
+          "claimed": false,
+          "module": null,
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A NodeType executor cannot own Run persistence"
+          ],
+          "rung": "declared"
+        }
+      ]
     },
     {
       "id": "SPEC-081226-6b46",
@@ -2506,19 +2761,152 @@
         "- maistro-engine#ADR-081226-6b46"
       ],
       "has_ac_heading": true,
-      "criteria_total": 0,
-      "annotated": 0,
-      "gherkin_criteria": 0,
+      "criteria_total": 12,
+      "annotated": 11,
+      "gherkin_criteria": 12,
       "gherkin_parse_errors": [],
       "scenarios_without_ac_tag": [],
       "distribution": {
-        "declared": 0,
+        "declared": 12,
         "covered": 0,
         "passing": 0,
         "reachable": 0
       },
-      "tier": "none",
-      "criteria": []
+      "tier": "declared",
+      "criteria": [
+        {
+          "id": "SPEC-081226-6b46/AC-1",
+          "claimed": false,
+          "module": "maistro.capabilities.registry",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Two Providers can serve one Capability"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6b46/AC-2",
+          "claimed": false,
+          "module": "maistro.capabilities.registry",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A constrained Binding never falls back"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6b46/AC-3",
+          "claimed": false,
+          "module": "maistro.capabilities.registry",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A permissive Binding selects a healthy allowed Provider and records it"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6b46/AC-4",
+          "claimed": false,
+          "module": "maistro.capabilities.governed_invocation",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Losing permission stops Invocation"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6b46/AC-5",
+          "claimed": false,
+          "module": "maistro.capabilities.governed_invocation",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A model tool call routes through the same Binding"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6b46/AC-6",
+          "claimed": false,
+          "module": "maistro.capabilities.providers.harness_stub",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Every adapter satisfies one correlation contract"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6b46/AC-7",
+          "claimed": false,
+          "module": "maistro.credentials.store",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Credentials are resolved at execution and never persisted"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6b46/AC-8",
+          "claimed": false,
+          "module": "maistro.capabilities.registry",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Provider health failure does not disturb Run identity"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6b46/AC-9",
+          "claimed": false,
+          "module": "maistro.runs.service",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "An agent-backed Binding creates a correlated child Run"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6b46/AC-10",
+          "claimed": false,
+          "module": "maistro.capabilities.harness_manager",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A harness session keeps its handle without owning lifecycle"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6b46/AC-11",
+          "claimed": false,
+          "module": "maistro.capabilities.invocation_store",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Invocations are queryable by correlation id"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6b46/AC-12",
+          "claimed": false,
+          "module": null,
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "An adapter cannot widen its parent Binding's permission"
+          ],
+          "rung": "declared"
+        }
+      ]
     },
     {
       "id": "SPEC-081226-6e34",
@@ -2529,19 +2917,152 @@
         "- maistro-engine#ADR-081226-6e34"
       ],
       "has_ac_heading": true,
-      "criteria_total": 0,
-      "annotated": 0,
-      "gherkin_criteria": 0,
+      "criteria_total": 12,
+      "annotated": 12,
+      "gherkin_criteria": 12,
       "gherkin_parse_errors": [],
       "scenarios_without_ac_tag": [],
       "distribution": {
-        "declared": 0,
+        "declared": 12,
         "covered": 0,
         "passing": 0,
         "reachable": 0
       },
-      "tier": "none",
-      "criteria": []
+      "tier": "declared",
+      "criteria": [
+        {
+          "id": "SPEC-081226-6e34/AC-1",
+          "claimed": false,
+          "module": "maistro.projects.authorization",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Grants accumulate inside their scope only"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6e34/AC-2",
+          "claimed": false,
+          "module": "maistro.projects.authorization",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A sibling Project sees no grant from its sibling"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6e34/AC-3",
+          "claimed": false,
+          "module": "maistro.projects.authorization",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A child may grant authority its parent lacks"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6e34/AC-4",
+          "claimed": false,
+          "module": "maistro.projects.authorization",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A Root deny beats a descendant grant"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6e34/AC-5",
+          "claimed": false,
+          "module": "maistro.projects.authorization",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "An object-specific deny beats scope grants"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6e34/AC-6",
+          "claimed": false,
+          "module": "maistro.projects.authorization",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A child Credential is invisible to its parent"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6e34/AC-7",
+          "claimed": false,
+          "module": "maistro.projects.authorization",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Holding a permission is not authority to delegate it"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6e34/AC-8",
+          "claimed": false,
+          "module": "maistro.projects.authorization",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Delegation authority is itself scoped"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6e34/AC-9",
+          "claimed": false,
+          "module": "maistro.projects.authorization",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Cross-Workspace references are rejected"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6e34/AC-10",
+          "claimed": false,
+          "module": "maistro.personas.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Persona changes never change authorization"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6e34/AC-11",
+          "claimed": false,
+          "module": "maistro.projects.authorization",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Role bundles expand and remain deniable"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-6e34/AC-12",
+          "claimed": false,
+          "module": "maistro.capabilities.registry",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Fallback cannot escape the authorized candidate set"
+          ],
+          "rung": "declared"
+        }
+      ]
     },
     {
       "id": "SPEC-081226-7248",
@@ -2552,19 +3073,152 @@
         "- maistro-engine#ADR-081226-7248"
       ],
       "has_ac_heading": true,
-      "criteria_total": 0,
-      "annotated": 0,
-      "gherkin_criteria": 0,
+      "criteria_total": 12,
+      "annotated": 11,
+      "gherkin_criteria": 12,
       "gherkin_parse_errors": [],
       "scenarios_without_ac_tag": [],
       "distribution": {
-        "declared": 0,
+        "declared": 12,
         "covered": 0,
         "passing": 0,
         "reachable": 0
       },
-      "tier": "none",
-      "criteria": []
+      "tier": "declared",
+      "criteria": [
+        {
+          "id": "SPEC-081226-7248/AC-1",
+          "claimed": false,
+          "module": "maistro.events.durable_log",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Concurrent producers share one deterministic sequence"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-7248/AC-2",
+          "claimed": false,
+          "module": "maistro.events.durable_log",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A reconnecting client replays from a sequence"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-7248/AC-3",
+          "claimed": false,
+          "module": "maistro.events.outbox",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A committed transition always gets its event"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-7248/AC-4",
+          "claimed": false,
+          "module": "maistro.events.invocations",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Duplicate delivery does not duplicate effects"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-7248/AC-5",
+          "claimed": false,
+          "module": "maistro.events.envelope",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Adapted package events keep canonical correlation"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-7248/AC-6",
+          "claimed": false,
+          "module": "maistro.events.checkpoints",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A waiting NodeRun releases its worker and resumes"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-7248/AC-7",
+          "claimed": false,
+          "module": "maistro.events.checkpoints",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Incompatible checkpoint metadata refuses resume"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-7248/AC-8",
+          "claimed": false,
+          "module": "maistro.graph.durable_runs.executor",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Stale running state is reconciled, not displayed forever"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-7248/AC-9",
+          "claimed": false,
+          "module": "maistro.graph.durable_runs.executor",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Crash-loop policy bounds automatic recovery"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-7248/AC-10",
+          "claimed": false,
+          "module": "maistro.events.durable_log",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Chronology reconstructs from canonical events"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-7248/AC-11",
+          "claimed": false,
+          "module": "maistro.events.envelope",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Telemetry joins to events by correlation id"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-7248/AC-12",
+          "claimed": false,
+          "module": null,
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A second canonical sequence is a violation"
+          ],
+          "rung": "declared"
+        }
+      ]
     },
     {
       "id": "SPEC-081226-9944",
@@ -2575,19 +3229,119 @@
         "- maistro-engine#ADR-081226-9944"
       ],
       "has_ac_heading": true,
-      "criteria_total": 0,
-      "annotated": 0,
-      "gherkin_criteria": 0,
+      "criteria_total": 9,
+      "annotated": 8,
+      "gherkin_criteria": 9,
       "gherkin_parse_errors": [],
       "scenarios_without_ac_tag": [],
       "distribution": {
-        "declared": 0,
+        "declared": 9,
         "covered": 0,
         "passing": 0,
         "reachable": 0
       },
-      "tier": "none",
-      "criteria": []
+      "tier": "declared",
+      "criteria": [
+        {
+          "id": "SPEC-081226-9944/AC-1",
+          "claimed": false,
+          "module": "maistro.workspaces.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Workspace identity is independent of its members"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-9944/AC-2",
+          "claimed": false,
+          "module": "maistro.workspaces.store",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Workspace creation provisions a Root Project"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-9944/AC-3",
+          "claimed": false,
+          "module": "maistro.graph.definitions",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "One Workspace Template instantiates into several Projects"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-9944/AC-4",
+          "claimed": false,
+          "module": "maistro.graph.definitions",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A persisted Graph carries both scopes"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-9944/AC-5",
+          "claimed": false,
+          "module": "maistro.runs.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A Run captures scope immutably from its Graph snapshot"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-9944/AC-6",
+          "claimed": false,
+          "module": "maistro.runs.store",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Retry adds an Attempt rather than a Run"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-9944/AC-7",
+          "claimed": false,
+          "module": "maistro.personas.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Persona configures taste, never authority"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-9944/AC-8",
+          "claimed": false,
+          "module": "maistro.runs.service",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Ordinary child Run creation cannot leave the Workspace"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-9944/AC-9",
+          "claimed": false,
+          "module": null,
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A competing universal Run lifecycle is a violation"
+          ],
+          "rung": "declared"
+        }
+      ]
     },
     {
       "id": "SPEC-081226-a66b",
@@ -2598,19 +3352,218 @@
         "- maistro-engine#ADR-081226-a66b"
       ],
       "has_ac_heading": true,
-      "criteria_total": 0,
-      "annotated": 0,
-      "gherkin_criteria": 0,
+      "criteria_total": 18,
+      "annotated": 18,
+      "gherkin_criteria": 18,
       "gherkin_parse_errors": [],
       "scenarios_without_ac_tag": [],
       "distribution": {
-        "declared": 0,
+        "declared": 18,
         "covered": 0,
         "passing": 0,
         "reachable": 0
       },
-      "tier": "none",
-      "criteria": []
+      "tier": "declared",
+      "criteria": [
+        {
+          "id": "SPEC-081226-a66b/AC-1",
+          "claimed": false,
+          "module": "maistro.runs.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Every allowed transition is covered, and illegal ones are refused"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-a66b/AC-2",
+          "claimed": false,
+          "module": "maistro.runs.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Run creation refuses a snapshot from another scope"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-a66b/AC-3",
+          "claimed": false,
+          "module": "maistro.runs.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Policy retry keeps identity and adds an ordinal"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-a66b/AC-4",
+          "claimed": false,
+          "module": "maistro.runs.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A stale resumable NodeRun resumes from its Checkpoint"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-a66b/AC-5",
+          "claimed": false,
+          "module": "maistro.graph.durable_runs.attempt_executor",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Concurrent Attempts under one Run do not collide"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-a66b/AC-6",
+          "claimed": false,
+          "module": "maistro.graph.durable_runs.attempt_executor",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Runtime deadline expiry is recorded and reconciled"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-a66b/AC-7",
+          "claimed": false,
+          "module": "maistro.graph.durable_runs.attempt_executor",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "An executor TimeoutError is a failure, not a Runtime timeout"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-a66b/AC-8",
+          "claimed": false,
+          "module": "maistro.graph.durable_runs.attempt_executor",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Cancellation leaves no phantom running worker"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-a66b/AC-9",
+          "claimed": false,
+          "module": "maistro.graph.durable_runs.executor",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A wait survives restart with no live worker"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-a66b/AC-10",
+          "claimed": false,
+          "module": "maistro.runs.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A child Run inherits its parent Project"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-a66b/AC-11",
+          "claimed": false,
+          "module": "maistro.runs.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Cross-Project child Runs are explicit and authorized"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-a66b/AC-12",
+          "claimed": false,
+          "module": "maistro.runs.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Cross-Workspace child Run creation fails"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-a66b/AC-13",
+          "claimed": false,
+          "module": "maistro.runs.service",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Accepting a WorkRequest produces a Run"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-a66b/AC-14",
+          "claimed": false,
+          "module": "maistro.runs.service",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A scheduled execution uses the same lifecycle service as a manual one"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-a66b/AC-15",
+          "claimed": false,
+          "module": "maistro.graph.durable_runs.executor",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Durable adapters preserve traversal semantics on canonical ids"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-a66b/AC-16",
+          "claimed": false,
+          "module": "maistro.runs.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "History reloads with identical relationships"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-a66b/AC-17",
+          "claimed": false,
+          "module": "maistro.runs.service",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A migrated entry path cannot complete work without a Run"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-a66b/AC-18",
+          "claimed": false,
+          "module": "maistro.runs.service",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "The canonical execution service is independent of traversal and product code"
+          ],
+          "rung": "declared"
+        }
+      ]
     },
     {
       "id": "SPEC-081226-bb3a",
@@ -2621,19 +3574,152 @@
         "- maistro-engine#ADR-081226-bb3a"
       ],
       "has_ac_heading": true,
-      "criteria_total": 0,
-      "annotated": 0,
-      "gherkin_criteria": 0,
+      "criteria_total": 12,
+      "annotated": 11,
+      "gherkin_criteria": 12,
       "gherkin_parse_errors": [],
       "scenarios_without_ac_tag": [],
       "distribution": {
-        "declared": 0,
+        "declared": 12,
         "covered": 0,
         "passing": 0,
         "reachable": 0
       },
-      "tier": "none",
-      "criteria": []
+      "tier": "declared",
+      "criteria": [
+        {
+          "id": "SPEC-081226-bb3a/AC-1",
+          "claimed": false,
+          "module": "maistro.graph.definitions",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Editing an instantiated Node leaves its Template untouched"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-bb3a/AC-2",
+          "claimed": false,
+          "module": "maistro.graph.definitions",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Publishing a new version does not disturb existing objects"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-bb3a/AC-3",
+          "claimed": false,
+          "module": "maistro.graph.definitions",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Instantiation binds to an exact version"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-bb3a/AC-4",
+          "claimed": false,
+          "module": "maistro.graph.definitions",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Editing an instantiated Graph leaves its Template untouched"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-bb3a/AC-5",
+          "claimed": false,
+          "module": "maistro.graph.definitions",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A GraphTemplate version pins its nested NodeTemplates"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-bb3a/AC-6",
+          "claimed": false,
+          "module": "maistro.graph.definitions",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Save-as-template creates a new identity and leaves the source alone"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-bb3a/AC-7",
+          "claimed": false,
+          "module": "maistro.graph.definitions",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Publishing a version keeps the old one addressable"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-bb3a/AC-8",
+          "claimed": false,
+          "module": "maistro.personas.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Persona catalog membership mutates nothing"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-bb3a/AC-9",
+          "claimed": false,
+          "module": "maistro.graph.definitions",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Execution state is not reusable semantic content"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-bb3a/AC-10",
+          "claimed": false,
+          "module": "maistro.graph.definitions",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Legacy definitions import with provenance"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-bb3a/AC-11",
+          "claimed": false,
+          "module": null,
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Improvement produces candidates, never silent mutation"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-bb3a/AC-12",
+          "claimed": false,
+          "module": "maistro.graph.definitions",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Templates and provenance survive restart"
+          ],
+          "rung": "declared"
+        }
+      ]
     },
     {
       "id": "SPEC-081226-e626",
@@ -2644,19 +3730,119 @@
         "- maistro-engine#ADR-081226-e626"
       ],
       "has_ac_heading": true,
-      "criteria_total": 0,
-      "annotated": 0,
-      "gherkin_criteria": 0,
+      "criteria_total": 9,
+      "annotated": 9,
+      "gherkin_criteria": 9,
       "gherkin_parse_errors": [],
       "scenarios_without_ac_tag": [],
       "distribution": {
-        "declared": 0,
+        "declared": 9,
         "covered": 0,
         "passing": 0,
         "reachable": 0
       },
-      "tier": "none",
-      "criteria": []
+      "tier": "declared",
+      "criteria": [
+        {
+          "id": "SPEC-081226-e626/AC-1",
+          "claimed": false,
+          "module": "maistro.personas.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Purpose is independent of name"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-e626/AC-2",
+          "claimed": false,
+          "module": "maistro.personas.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Taste and voice are separate fields"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-e626/AC-3",
+          "claimed": false,
+          "module": "maistro.personas.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Persona shapes surfaces, not permissions"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-e626/AC-4",
+          "claimed": false,
+          "module": "maistro.projects.authorization",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Preference cannot override authorization"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-e626/AC-5",
+          "claimed": false,
+          "module": "maistro.personas.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Persona carries no authority fields"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-e626/AC-6",
+          "claimed": false,
+          "module": "maistro.projects.authorization",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Authorization is stable across Persona edits"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-e626/AC-7",
+          "claimed": false,
+          "module": "maistro.personas.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Persona defaults apply at creation only"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-e626/AC-8",
+          "claimed": false,
+          "module": "maistro.personas.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "One live Persona per Workspace"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081226-e626/AC-9",
+          "claimed": false,
+          "module": "maistro.personas.model",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Persona holds no execution state"
+          ],
+          "rung": "declared"
+        }
+      ]
     },
     {
       "id": "SPEC-081426-1f7c",
@@ -2667,19 +3853,152 @@
         "- maistro-engine#ADR-081426-1f7c"
       ],
       "has_ac_heading": true,
-      "criteria_total": 0,
-      "annotated": 0,
-      "gherkin_criteria": 0,
+      "criteria_total": 12,
+      "annotated": 12,
+      "gherkin_criteria": 12,
       "gherkin_parse_errors": [],
       "scenarios_without_ac_tag": [],
       "distribution": {
-        "declared": 0,
+        "declared": 12,
         "covered": 0,
         "passing": 0,
         "reachable": 0
       },
-      "tier": "none",
-      "criteria": []
+      "tier": "declared",
+      "criteria": [
+        {
+          "id": "SPEC-081426-1f7c/AC-1",
+          "claimed": false,
+          "module": "maistro.runtime.execution",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Concurrent Attempts get distinct execution IDs"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-1f7c/AC-2",
+          "claimed": false,
+          "module": "maistro.runtime.execution",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Configured concurrency is never exceeded"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-1f7c/AC-3",
+          "claimed": false,
+          "module": "maistro.runtime.execution",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A deadline while queueing leaks no slot"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-1f7c/AC-4",
+          "claimed": false,
+          "module": "maistro.runtime.execution",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "An executor TimeoutError is counted as a failure"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-1f7c/AC-5",
+          "claimed": false,
+          "module": "maistro.runtime.execution",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Cancellation while queueing leaves state consistent"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-1f7c/AC-6",
+          "claimed": false,
+          "module": "maistro.runtime.execution",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A duplicate execution ID is rejected without consuming capacity"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-1f7c/AC-7",
+          "claimed": false,
+          "module": "maistro.runtime.execution",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Direct slot acquisition still records metrics"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-1f7c/AC-8",
+          "claimed": false,
+          "module": "maistro.runtime.execution",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Recursive emission from a sink does not deadlock"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-1f7c/AC-9",
+          "claimed": false,
+          "module": "maistro.runtime.execution",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A throwing sink does not block later emits"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-1f7c/AC-10",
+          "claimed": false,
+          "module": "maistro.runtime.execution",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Runtime does not depend on traversal or Run persistence"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-1f7c/AC-11",
+          "claimed": false,
+          "module": "maistro.runtime.execution",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "The benchmark stops timing at execution completion"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-1f7c/AC-12",
+          "claimed": false,
+          "module": "maistro.graph.durable_runs.attempt_executor",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Runtime execution_id comes from Attempt.attempt_id"
+          ],
+          "rung": "declared"
+        }
+      ]
     },
     {
       "id": "SPEC-081426-b1d3",
@@ -2690,19 +4009,185 @@
         "- maistro-engine#ADR-081426-b1d3"
       ],
       "has_ac_heading": true,
-      "criteria_total": 0,
-      "annotated": 0,
-      "gherkin_criteria": 0,
+      "criteria_total": 15,
+      "annotated": 15,
+      "gherkin_criteria": 15,
       "gherkin_parse_errors": [],
       "scenarios_without_ac_tag": [],
       "distribution": {
-        "declared": 0,
+        "declared": 15,
         "covered": 0,
         "passing": 0,
         "reachable": 0
       },
-      "tier": "none",
-      "criteria": []
+      "tier": "declared",
+      "criteria": [
+        {
+          "id": "SPEC-081426-b1d3/AC-1",
+          "claimed": false,
+          "module": "maistro.projects.scope",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Root provisioning is idempotent"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-b1d3/AC-2",
+          "claimed": false,
+          "module": "maistro.projects.scope",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "The Root Project is immovable"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-b1d3/AC-3",
+          "claimed": false,
+          "module": "maistro.projects.scope",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "The tree stays acyclic and inside one Workspace"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-b1d3/AC-4",
+          "claimed": false,
+          "module": "maistro.projects.scope",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A Graph at the Workspace root files under Root Project"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-b1d3/AC-5",
+          "claimed": false,
+          "module": "maistro.projects.scope",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Instantiation files the copy without moving the Template"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-b1d3/AC-6",
+          "claimed": false,
+          "module": "maistro.projects.scope",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Defaults resolve nearest-wins and never act retroactively"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-b1d3/AC-7",
+          "claimed": false,
+          "module": "maistro.projects.scope",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Moving an object preserves its resolved configuration"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-b1d3/AC-8",
+          "claimed": false,
+          "module": "maistro.projects.scope_store",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Resource visibility follows the tree downward only"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-b1d3/AC-9",
+          "claimed": false,
+          "module": "maistro.projects.scope",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "An impossible move changes nothing"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-b1d3/AC-10",
+          "claimed": false,
+          "module": "maistro.projects.authorization",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Ancestor grants accumulate without leaking sideways"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-b1d3/AC-11",
+          "claimed": false,
+          "module": "maistro.projects.authorization",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A narrower Project may hold stronger authority"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-b1d3/AC-12",
+          "claimed": false,
+          "module": "maistro.projects.authorization",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "An inherited deny beats grants above and below"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-b1d3/AC-13",
+          "claimed": false,
+          "module": "maistro.projects.authorization",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "publish does not confer the right to delegate publish"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-b1d3/AC-14",
+          "claimed": false,
+          "module": "maistro.projects.scope",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "A non-empty Project is not deleted implicitly"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-081426-b1d3/AC-15",
+          "claimed": false,
+          "module": "maistro.projects.authorization",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Persona cannot manufacture authorization"
+          ],
+          "rung": "declared"
+        }
+      ]
     },
     {
       "id": "SPEC-160",
@@ -8342,12 +9827,12 @@
       "specs": [
         "SPEC-081226-034b"
       ],
-      "measurable_specs": 0,
+      "measurable_specs": 1,
       "own_criteria": 0,
       "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "declared"
     },
     {
       "id": "ADR-081226-69ee",
@@ -8356,12 +9841,12 @@
       "specs": [
         "SPEC-081226-69ee"
       ],
-      "measurable_specs": 0,
+      "measurable_specs": 1,
       "own_criteria": 0,
       "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "declared"
     },
     {
       "id": "ADR-081226-6b46",
@@ -8370,12 +9855,12 @@
       "specs": [
         "SPEC-081226-6b46"
       ],
-      "measurable_specs": 0,
+      "measurable_specs": 1,
       "own_criteria": 0,
       "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "declared"
     },
     {
       "id": "ADR-081226-6e34",
@@ -8384,12 +9869,12 @@
       "specs": [
         "SPEC-081226-6e34"
       ],
-      "measurable_specs": 0,
+      "measurable_specs": 1,
       "own_criteria": 0,
       "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "declared"
     },
     {
       "id": "ADR-081226-7248",
@@ -8398,12 +9883,12 @@
       "specs": [
         "SPEC-081226-7248"
       ],
-      "measurable_specs": 0,
+      "measurable_specs": 1,
       "own_criteria": 0,
       "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "declared"
     },
     {
       "id": "ADR-081226-9944",
@@ -8412,12 +9897,12 @@
       "specs": [
         "SPEC-081226-9944"
       ],
-      "measurable_specs": 0,
+      "measurable_specs": 1,
       "own_criteria": 0,
       "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "declared"
     },
     {
       "id": "ADR-081226-a66b",
@@ -8426,12 +9911,12 @@
       "specs": [
         "SPEC-081226-a66b"
       ],
-      "measurable_specs": 0,
+      "measurable_specs": 1,
       "own_criteria": 0,
       "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "declared"
     },
     {
       "id": "ADR-081226-bb3a",
@@ -8440,12 +9925,12 @@
       "specs": [
         "SPEC-081226-bb3a"
       ],
-      "measurable_specs": 0,
+      "measurable_specs": 1,
       "own_criteria": 0,
       "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "declared"
     },
     {
       "id": "ADR-081226-e626",
@@ -8454,12 +9939,12 @@
       "specs": [
         "SPEC-081226-e626"
       ],
-      "measurable_specs": 0,
+      "measurable_specs": 1,
       "own_criteria": 0,
       "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "declared"
     },
     {
       "id": "ADR-081426-1f7c",
@@ -8468,12 +9953,12 @@
       "specs": [
         "SPEC-081426-1f7c"
       ],
-      "measurable_specs": 0,
+      "measurable_specs": 1,
       "own_criteria": 0,
       "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "declared"
     },
     {
       "id": "ADR-081426-b1d3",
@@ -8482,12 +9967,12 @@
       "specs": [
         "SPEC-081426-b1d3"
       ],
-      "measurable_specs": 0,
+      "measurable_specs": 1,
       "own_criteria": 0,
       "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "declared"
     },
     {
       "id": "ADR-081426-fb9f",

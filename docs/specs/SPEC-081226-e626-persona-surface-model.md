@@ -30,6 +30,16 @@ contracts:
 tests: []
 source:
   - packages/maistro-core/src/maistro/personas
+ac-modules:
+  AC-1: maistro.personas.model
+  AC-2: maistro.personas.model
+  AC-3: maistro.personas.model
+  AC-4: maistro.projects.authorization
+  AC-5: maistro.personas.model
+  AC-6: maistro.projects.authorization
+  AC-7: maistro.personas.model
+  AC-8: maistro.personas.model
+  AC-9: maistro.personas.model
 layer: UserClient
 owners:
   - '@BlakeMatthews-dev'
@@ -87,15 +97,64 @@ When creation defaults are resolved, Persona defaults MAY be applied after Works
 
 ## Acceptance Criteria
 
-1. A Persona can encode a Workspace purpose independently from its name.
-2. A Persona can encode taste/aesthetic and style/voice guidance independently.
-3. Persona can configure UI/Builders surfaces without changing the principal's effective permissions.
-4. A Persona can prefer Binding A while Project authorization makes only Binding B available; A remains unavailable.
-5. Persona data has no `permission_ceiling`, grants, denies, or credential-scope field.
-6. Authorization resolution produces the same result when Persona style/taste/purpose/preferences change.
-7. Persona creation defaults participate in new-object resolution but later Persona changes do not mutate existing objects.
-8. Exactly one live Persona per Workspace is enforced by the Persona store/service.
-9. Persona remains definition/configuration only and contains no Run/Attempt lifecycle state.
+```gherkin
+Feature: Persona surface model
+
+  @AC-1
+  Scenario: Purpose is independent of name
+    Given a Persona
+    When its purpose is set
+    Then the purpose is stored independently of the Persona name
+
+  @AC-2
+  Scenario: Taste and voice are separate fields
+    Given a Persona
+    When taste/aesthetic and style/voice guidance are set
+    Then each is stored and readable independently
+
+  @AC-3
+  Scenario: Persona shapes surfaces, not permissions
+    Given a principal with fixed grants
+    When the Persona configures UI and Builders surfaces
+    Then the principal's effective permissions are unchanged
+
+  @AC-4
+  Scenario: Preference cannot override authorization
+    Given a Persona preferring Binding A
+    When Project authorization makes only Binding B available
+    Then Binding A remains unavailable
+
+  @AC-5
+  Scenario: Persona carries no authority fields
+    Given the Persona schema
+    When it is inspected
+    Then it has no permission_ceiling, grant, deny, or credential-scope field
+
+  @AC-6
+  Scenario: Authorization is stable across Persona edits
+    Given resolved authorization for a principal
+    When Persona style, taste, purpose or preferences change
+    Then authorization resolves to the same result
+
+  @AC-7
+  Scenario: Persona defaults apply at creation only
+    Given a Persona with creation defaults
+    When a new object is created
+    Then the defaults participate in its resolution
+    But a later Persona change does not mutate that existing object
+
+  @AC-8
+  Scenario: One live Persona per Workspace
+    Given a Workspace with a live Persona
+    When a second live Persona is attached
+    Then the store or service refuses it
+
+  @AC-9
+  Scenario: Persona holds no execution state
+    Given the Persona schema
+    When it is inspected
+    Then it contains no Run or Attempt lifecycle state
+```
 
 ## Non-goals
 

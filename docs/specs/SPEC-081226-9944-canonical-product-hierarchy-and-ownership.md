@@ -34,6 +34,15 @@ source:
   - packages/maistro-core/src/maistro/personas
   - packages/maistro-core/src/maistro/graph
   - packages/maistro-core/src/maistro/runs
+ac-modules:
+  AC-1: maistro.workspaces.model
+  AC-2: maistro.workspaces.store
+  AC-3: maistro.graph.definitions
+  AC-4: maistro.graph.definitions
+  AC-5: maistro.runs.model
+  AC-6: maistro.runs.store
+  AC-7: maistro.personas.model
+  AC-8: maistro.runs.service
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
@@ -89,15 +98,69 @@ Capability -> Provider -> Binding -> Invocation
 
 ## Acceptance Criteria
 
-1. A Workspace can have multiple Users through WorkspaceMembership without changing Workspace identity.
-2. Workspace creation provisions one Root Project and one live Persona can be attached independently of membership.
-3. A Workspace-wide Template can be instantiated into different Projects without moving or duplicating the Template itself.
-4. A persisted Graph contains both Workspace and Project identity.
-5. A Run captures the Graph's Workspace and Project identity immutably for that execution.
-6. Retry preserves Run/NodeRun identity and creates a new Attempt.
-7. Persona fields cannot grant permissions or expose otherwise unavailable credentials/resources.
-8. Child Run creation cannot cross Workspace boundaries through ordinary execution APIs.
-9. Architecture checks can identify new competing universal Run lifecycle definitions as violations.
+```gherkin
+Feature: Canonical product hierarchy and ownership
+
+  @AC-1
+  Scenario: Workspace identity is independent of its members
+    Given a Workspace with one member
+    When a second User is added through WorkspaceMembership
+    Then both Users can reach the Workspace
+    And the Workspace identity is unchanged
+
+  @AC-2
+  Scenario: Workspace creation provisions a Root Project
+    Given no Workspace exists
+    When a Workspace is created
+    Then exactly one persisted Root Project exists in it
+    And a live Persona can be attached without granting any membership
+
+  @AC-3
+  Scenario: One Workspace Template instantiates into several Projects
+    Given a Workspace-wide Template and two Projects in that Workspace
+    When the Template is instantiated into each Project
+    Then each Project holds its own mutable object
+    And the Template itself is neither moved nor duplicated
+
+  @AC-4
+  Scenario: A persisted Graph carries both scopes
+    Given a Graph saved in a Project
+    When the Graph is reloaded
+    Then it reports both its workspace_id and its project_id
+
+  @AC-5
+  Scenario: A Run captures scope immutably from its Graph snapshot
+    Given a Graph in a known Workspace and Project
+    When a Run is created from it
+    Then the Run records that workspace_id and project_id
+    And later edits to the Graph do not change the Run's recorded scope
+
+  @AC-6
+  Scenario: Retry adds an Attempt rather than a Run
+    Given a Run with a failed NodeRun
+    When the NodeRun is retried
+    Then the Run id and NodeRun id are unchanged
+    And a new Attempt exists with the next ordinal
+
+  @AC-7
+  Scenario: Persona configures taste, never authority
+    Given a Persona on a Workspace
+    When its fields are used to build an execution context
+    Then no permission is granted by any Persona field
+    And no credential or resource becomes reachable that was not already authorized
+
+  @AC-8
+  Scenario: Ordinary child Run creation cannot leave the Workspace
+    Given a Run in one Workspace
+    When a child Run is requested in a different Workspace through the ordinary execution API
+    Then the request is refused
+
+  @AC-9
+  Scenario: A competing universal Run lifecycle is a violation
+    Given the architecture fitness check
+    When a second universal run-lifecycle definition is introduced
+    Then the check reports it as a violation
+```
 
 ## Non-goals
 
