@@ -131,17 +131,17 @@ def test_init_uses_explicit_db_url_over_env(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_init_falls_back_to_database_url_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.delenv("STUDIOSHARE_DB_URL", raising=False)
+    monkeypatch.delenv("DEPLOY_TARGET_DB_URL", raising=False)
     monkeypatch.setenv("DATABASE_URL", "postgres://env-db")
     tracker = PgStrikeTracker()
     assert tracker._db_url == "postgres://env-db"
 
 
-def test_init_falls_back_to_studioshare_db_url_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_init_falls_back_to_deploy_target_db_url_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.setenv("STUDIOSHARE_DB_URL", "postgres://studio")
+    monkeypatch.setenv("DEPLOY_TARGET_DB_URL", "postgres://deploy-target")
     tracker = PgStrikeTracker()
-    assert tracker._db_url == "postgres://studio"
+    assert tracker._db_url == "postgres://deploy-target"
 
 
 async def test_record_violation_first_strike_sets_elevated(
@@ -271,7 +271,7 @@ async def test_rate_limiter_get_pool_creates_and_caches(
 
 def test_rate_limiter_init_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.delenv("STUDIOSHARE_DB_URL", raising=False)
+    monkeypatch.delenv("DEPLOY_TARGET_DB_URL", raising=False)
     limiter = PgRateLimiter()
     assert limiter._db_url is None
     assert limiter._window_seconds == 60

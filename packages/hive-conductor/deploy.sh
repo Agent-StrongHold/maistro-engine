@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy Hive Conductor to StudioShare Launch
+# Deploy Hive Conductor to the external deploy platform
 # Usage: ./deploy.sh [preview|production]
 #
 # This script deploys a BUILD, not a RELEASE. It pushes one immutable
@@ -47,7 +47,7 @@ echo "  ✓ Pushed ${FULL_IMAGE} (SHA tag only — release tags come from releas
 echo ""
 echo "▶ Step 3: Verify..."
 if [ "${ENVIRONMENT}" = "preview" ]; then
-  PREVIEW_URL="${PREVIEW_URL:-https://hive-preview.studioshare.dev}"
+  PREVIEW_URL="${PREVIEW_URL:-https://hive-preview.example.com}"
   echo "  Deploying to preview: ${PREVIEW_URL}"
   # If using docker-compose on remote:
   # ssh deploy@preview "cd /opt/hive && docker pull ${FULL_IMAGE} && docker-compose up -d"
@@ -59,7 +59,7 @@ fi
 
 # Step 4: Production cutover (only if explicitly requested)
 if [ "${ENVIRONMENT}" = "production" ]; then
-  PROD_URL="${PROD_URL:-https://hive.studioshare.dev}"
+  PROD_URL="${PROD_URL:-https://hive.example.com}"
   echo ""
   echo "▶ Step 4: Production cutover..."
   echo "  ⚠️  This will update production at ${PROD_URL}"

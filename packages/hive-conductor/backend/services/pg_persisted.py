@@ -18,7 +18,7 @@ logger = logging.getLogger("hive.pg_persisted")
 
 
 def _postgrest_url() -> str:
-    return os.environ.get("STUDIOSHARE_POSTGREST_URL") or os.environ.get("POSTGREST_URL") or ""
+    return os.environ.get("DEPLOY_TARGET_POSTGREST_URL") or os.environ.get("POSTGREST_URL") or ""
 
 
 class PgPersistedStore:

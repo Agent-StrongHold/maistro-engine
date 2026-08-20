@@ -1,11 +1,11 @@
-"""Pipeline orchestrator: scan → build+test (Tork) → deploy (Launch API)."""
+"""Pipeline orchestrator: scan → build+test (external CI) → deploy (Launch API)."""
 
 import os
 
 from maistro.http import shared_client
 from services import tork_client
 
-LAUNCH_API = os.environ.get("DEPLOY_API_URL") or os.environ.get("STUDIOSHARE_API_URL") or ""
+LAUNCH_API = os.environ.get("DEPLOY_API_URL") or os.environ.get("DEPLOY_TARGET_API_URL") or ""
 FANTASIA_BASE = os.environ.get("FANTASIA_BASE_URL", "http://127.0.0.1:8101")
 
 
@@ -17,11 +17,11 @@ async def trigger_deploy(
     scan_summary: dict | None = None,
     force: bool = False,
 ) -> dict:
-    """Submit build+test Tork job. Raises if scan is blocking and force=False."""
+    """Submit build+test job to the external CI system. Raises if scan is blocking and force=False."""
     if scan_summary and scan_summary.get("blocking") and not force:
         raise Exception("blocking: scan has critical/high findings. Use force=True to override.")
 
-    callback_url = f"{FANTASIA_BASE}/v1/projects/webhooks/tork"
+    callback_url = f"{FANTASIA_BASE}/v1/projects/webhooks/external-build"
     yaml = tork_client.build_job_yaml(
         project_id=project_id,
         repo_url=repo_url,
@@ -35,7 +35,7 @@ async def trigger_deploy(
 
 async def deploy_to_launch(project_name: str, repo_url: str, branch: str = "main") -> dict:
     """Create a Launch app and trigger deployment. Returns {app_name, url}."""
-    api_key = os.environ.get("DEPLOY_API_KEY") or os.environ.get("STUDIOSHARE_API_KEY") or ""
+    api_key = os.environ.get("DEPLOY_API_KEY") or os.environ.get("DEPLOY_TARGET_API_KEY") or ""
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
     async with shared_client(timeout=30) as client:

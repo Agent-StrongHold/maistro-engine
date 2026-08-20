@@ -2280,9 +2280,9 @@ def get_scoped_tools(scope: str | None) -> list[dict]:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# JFC-only: PG persistence for memory tools on StudioShare Launch
+# Optional: PG persistence for memory tools on the external deploy target
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-if os.environ.get("STUDIOSHARE_APP_ENV"):
+if os.environ.get("DEPLOY_TARGET_APP_ENV"):
     _orig_memory_add = _tool_memory_add
     _orig_memory_delete = _tool_memory_delete
 

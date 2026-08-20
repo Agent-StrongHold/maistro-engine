@@ -13,7 +13,7 @@ from services import onboard_db, pipeline_orchestrator, repo_scanner
 
 router = APIRouter(prefix="/v1/projects", tags=["projects"])
 
-CACHE_URL = os.environ.get("REDIS_URL") or os.environ.get("STUDIOSHARE_CACHE_URL") or ""
+CACHE_URL = os.environ.get("REDIS_URL") or os.environ.get("DEPLOY_TARGET_CACHE_URL") or ""
 
 
 # ─── Models ───
@@ -201,10 +201,10 @@ async def trigger_deploy(project_id: str, body: DeployTrigger, request: Request)
     return {"deployment_id": dep["id"], **result}
 
 
-@router.post("/webhooks/tork")
-async def tork_webhook(request: Request):
+@router.post("/webhooks/external-build")
+async def external_build_webhook(request: Request):
     auth = request.headers.get("Authorization", "")
-    expected = f"Bearer {os.environ.get('TORK_CALLBACK_TOKEN', 'callback-token')}"
+    expected = f"Bearer {os.environ.get('EXTERNAL_BUILD_CALLBACK_TOKEN', 'callback-token')}"
     if auth != expected:
         raise HTTPException(401)
 
@@ -248,7 +248,7 @@ async def tork_webhook(request: Request):
                 await _publish_event(dep["project_id"], "deploy_failed", {"error": str(e)})
     elif state == "FAILED":
         await onboard_db.update_deployment(
-            dep["id"], {"status": "failed", "error": "Tork job failed"}
+            dep["id"], {"status": "failed", "error": "external build job failed"}
         )
         await onboard_db.update_project(dep["project_id"], {"status": "build_failed"})
         await _publish_event(dep["project_id"], "build_failed")

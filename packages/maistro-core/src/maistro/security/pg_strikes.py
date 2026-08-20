@@ -53,7 +53,7 @@ class PgStrikeTracker:
 
     def __init__(self, db_url: str | None = None):
         self._db_url = (
-            db_url or os.environ.get("DATABASE_URL") or os.environ.get("STUDIOSHARE_DB_URL")
+            db_url or os.environ.get("DATABASE_URL") or os.environ.get("DEPLOY_TARGET_DB_URL")
         )
         self._pool: Any = None
 
@@ -160,7 +160,7 @@ class PgRateLimiter:
 
     def __init__(self, db_url: str | None = None, window_seconds: int = 60, max_requests: int = 60):
         self._db_url = (
-            db_url or os.environ.get("DATABASE_URL") or os.environ.get("STUDIOSHARE_DB_URL")
+            db_url or os.environ.get("DATABASE_URL") or os.environ.get("DEPLOY_TARGET_DB_URL")
         )
         self._window_seconds = window_seconds
         self._max_requests = max_requests

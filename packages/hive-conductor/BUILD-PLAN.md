@@ -128,7 +128,7 @@ Each DAG: 3-6 nodes, real prompts, configured models, scored by its department's
 - Hill-climb: prompt engineering on style interpreter, model selection on generator
 
 ### 7. PM Fleet
-- OpsAgent model hill-climb (results from today's run)
+- Chatbot model hill-climb (results from today's run)
 - Knowledge distillation: Opus answers → focused FAQ → Flash Lite serves
 - Jira project key: set to MAISTRO
 - Enable GitHub/GitLab tools
@@ -146,7 +146,7 @@ Each DAG: 3-6 nodes, real prompts, configured models, scored by its department's
 - Error states: never blank, never raw JSON, always helpful
 - Speed: every interaction < 200ms (except LLM calls which show real status)
 
-### 9. Deploy to StudioShare Launch
+### 9. Deploy to the external deploy platform
 - Docker build
 - Push to launch-repo
 - Verify on preview URL
@@ -170,7 +170,7 @@ uvicorn main:app --host 0.0.0.0 --port 8101
 - `services/validation_gate.py` — Pareto-optimal model/param selection
 - `services/benchmark_eval.py` — detailed rubric scoring
 - `services/skill_optimizer.py` — SkillOpt pattern for skills/tools
-- `services/opsagent.py` — OpsAgent API client
+- `services/chatbot_integration.py` — Chatbot API client
 - `services/eval_judge.py` — expanded mutation vocabulary
 - `routes/daily_report_v2.py` — real Jira + Airtable data
 - `frontend/src/pages/Chat.tsx` — PM chat with persistence + suggestions
@@ -183,7 +183,7 @@ uvicorn main:app --host 0.0.0.0 --port 8101
 - Jira: on-prem Jira Server PAT in credential store (atlassian_server_jira)
 - Confluence: on-prem Jira Server PAT (atlassian_server_confluence)
 - Airtable: PAT in credential store
-- OpsAgent: browser-use via Chrome debug port (SSO session)
+- Chatbot: browser-use via Chrome debug port (SSO session)
 - Hive login: test/user1234
 
 ## Rules
