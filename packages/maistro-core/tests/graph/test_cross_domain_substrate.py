@@ -160,7 +160,7 @@ async def test_project_supports_arbitrary_use_cases() -> None:
 
     eng_proj = await store.create(
         owner_user_id="alice",
-        name="MAISTROarchitecture review",
+        name="maistro architecture review",
         profile_markdown="MAISTRO v0.2 → v0.3 architecture RFCs, focus on optimizer + projects",
     )
     eng_proj = await store.update(eng_proj.model_copy(update={"use_case": "engineering_rfc"}))

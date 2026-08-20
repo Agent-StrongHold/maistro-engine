@@ -1,5 +1,5 @@
 #!/bin/bash
-# Source credentials from JFC root
+# Source credentials from the repo root .env, if present
 ROOT_ENV="$(git rev-parse --show-toplevel 2>/dev/null)/.env"
 if [ -f "$ROOT_ENV" ]; then
   export $(grep -E "^[A-Z]" "$ROOT_ENV" | xargs)

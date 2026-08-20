@@ -362,12 +362,12 @@ async def test_web_search_calls_browser_then_llm(monkeypatch):
         browser_called_with["max_results"] = max_results
         return SearchResult(
             query=query,
-            summary="MAISTROis the company's agent platform; Claude is the LLM backbone.",
+            summary="maistro is the company's agent platform; Claude is the LLM backbone.",
             citations=(
                 Citation(
-                    title="MAISTROdocs",
+                    title="maistro docs",
                     url="https://example.com/docs",
-                    snippet="MAISTROdocumentation overview",
+                    snippet="maistro documentation overview",
                 ),
                 Citation(
                     title="Claude API",

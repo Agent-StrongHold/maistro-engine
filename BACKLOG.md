@@ -303,7 +303,7 @@ Maintained per [`engine#ADR-030`](https://github.com/BlakeMatthews-dev/maistro-e
 
 ## `AgentTuring` items
 
-Full v1.0 detail in [`AgentTuring/ROADMAP-v1.0.md`](https://github.com/BlakeMatthews-dev/AgentTuring/blob/main/ROADMAP-v1.0.md).
+Full v1.0 detail in `AgentTuring/ROADMAP-v1.0.md` (internal reference).
 
 ### v1.0 — measurable autonoesis
 

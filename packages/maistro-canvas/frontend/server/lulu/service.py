@@ -19,7 +19,7 @@ from lulu.preflight import preflight_cover, preflight_interior
 SANDBOX = os.environ.get("LULU_SANDBOX", "true").lower() != "false"
 CLIENT_KEY = os.environ.get("LULU_CLIENT_KEY", "")
 CLIENT_SECRET = os.environ.get("LULU_CLIENT_SECRET", "")
-CONTACT_EMAIL = os.environ.get("LULU_CONTACT_EMAIL", "orders@maincharacter.press")
+CONTACT_EMAIL = os.environ.get("LULU_CONTACT_EMAIL", "")
 
 client: LuluClient | None = None
 if CLIENT_KEY and CLIENT_SECRET:

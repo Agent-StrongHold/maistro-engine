@@ -27,7 +27,7 @@ class DomainConfig(TypedDict, total=False):
     default_dag_seeds: list[str]  # default DAG ids seeded on first project create
 
 
-# Curated set the standard MAISTROfrontends know how to render.
+# Curated set the standard maistro frontends know how to render.
 #
 # Order = priority for the v0.2/v0.3 shipping plan:
 #   1. pm_fleet         — current POC; heaviest investment

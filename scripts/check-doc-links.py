@@ -37,11 +37,6 @@ SKIP_DIRS = {".git", ".venv", "node_modules", "site-packages", "__pycache__"}
 # document that may reference them, so an unrelated file cannot inherit the
 # exemption.
 ALLOWED_OUTSIDE_REPO: dict[str, set[str]] = {
-    "docs/JFC-SANDBOX.md": {
-        "../../sandboxes/maistro-engine/README.md",
-        "../../../../MCP_servers/README.md",
-        "../../../../docs/MAISTRO-ENGINE-SANDBOX.md",
-    },
     "docs/PM_POC_RUNBOOK.md": {
         "../../../../docs/MAISTRO-ENGINE-SANDBOX.md",
         "../../../../container_registry/MCP_servers/README.md",

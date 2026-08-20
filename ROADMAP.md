@@ -3,8 +3,8 @@
 **Identical copies live in every repo of the four-repo system:**
 
 - [`BlakeMatthews-dev/maistro-engine`](https://github.com/BlakeMatthews-dev/maistro-engine) (substrate)
-- [`BlakeMatthews-dev/Project_mAIstro`](https://github.com/BlakeMatthews-dev/Project_mAIstro) (single-tenant secure multi-user)
-- [`BlakeMatthews-dev/AgentTuring`](https://github.com/BlakeMatthews-dev/AgentTuring) (autonoetic experiment)
+- `Project_mAIstro` (internal reference; single-tenant secure multi-user)
+- `AgentTuring` (internal reference; autonoetic experiment)
 - [`agent-stronghold/stronghold`](https://github.com/agent-stronghold/stronghold) (multi-tenant enterprise)
 
 Any edit lands in all four (or, until registry CI ships, in as many as the editor has access to). The full BACKLOG is the companion: see [`BACKLOG.md`](BACKLOG.md). The four-repo governance that defines this layout is [`engine#ADR-030`](https://github.com/BlakeMatthews-dev/maistro-engine/blob/main/docs/adr/ADR-030-four-repo-governance.md).
@@ -131,7 +131,7 @@ Dominant constraint: ease of self-hosting.
 
 #### `AgentTuring` v1.0 — measurable autonoesis
 
-Dominant constraint: continuity of self. See [`AgentTuring/ROADMAP-v1.0.md`](https://github.com/BlakeMatthews-dev/AgentTuring/blob/main/ROADMAP-v1.0.md) for full property-test detail.
+Dominant constraint: continuity of self. See `AgentTuring/ROADMAP-v1.0.md` (internal reference) for full property-test detail.
 
 | Item | Status | Detail |
 |---|---|---|
@@ -312,8 +312,8 @@ Legend: `[x]` complete | `[~]` in progress | `[·]` not started
 
 ## Per-product detail
 
-- mAIstro v1.0 detail — see [`Project_mAIstro/ROADMAP-v1.0.md`](https://github.com/BlakeMatthews-dev/Project_mAIstro/blob/main/ROADMAP-v1.0.md) (proposal pending; lives in `engine/docs/proposals/Project_mAIstro/` until applied)
-- Turing v1.0 detail — see [`AgentTuring/ROADMAP-v1.0.md`](https://github.com/BlakeMatthews-dev/AgentTuring/blob/main/ROADMAP-v1.0.md)
+- mAIstro v1.0 detail — see `Project_mAIstro/ROADMAP-v1.0.md` (internal reference) (proposal pending; lives in `engine/docs/proposals/Project_mAIstro/` until applied)
+- Turing v1.0 detail — see `AgentTuring/ROADMAP-v1.0.md` (internal reference)
 - Stronghold v1.0 detail — see [`stronghold/ROADMAP-v1.0.md`](https://github.com/agent-stronghold/stronghold/blob/main/ROADMAP-v1.0.md)
 
 ## Maintenance

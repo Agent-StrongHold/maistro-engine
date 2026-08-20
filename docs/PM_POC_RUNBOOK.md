@@ -2,7 +2,7 @@
 
 Branch: `research/pm-fleet-poc`
 
-**Platform context:** This repo is the `maistro-engine` sandbox template It is **not** the Vibe Hosting Launch app. [`docs/MAISTRO-ENGINE-SANDBOX.md`](../../../../docs/MAISTRO-ENGINE-SANDBOX.md).
+**Platform context:** This repo is the `maistro-engine` sandbox template. See [`docs/MAISTRO-ENGINE-SANDBOX.md`](../../../../docs/MAISTRO-ENGINE-SANDBOX.md) for details.
 
 `HIVE_POC_MODE=pm` is a **demo overlay** (program hyperagent, Jira drafts, trimmed nav). Default Hive mode is full multi-agent / multi-MCP engineering conductor.
 

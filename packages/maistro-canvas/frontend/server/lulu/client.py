@@ -42,7 +42,7 @@ class LuluClient:
         self,
         client_key: str,
         client_secret: str,
-        contact_email: str = "orders@maincharacter.press",
+        contact_email: str = "",
         sandbox: bool = True,
     ):
         self.client_key = client_key

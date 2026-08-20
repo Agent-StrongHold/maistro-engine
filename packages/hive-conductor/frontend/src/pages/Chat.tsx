@@ -394,7 +394,7 @@ export default function ChatPage() {
         .tool-step--done { border-left: 3px solid var(--ok, #4caf50); }
         .tool-step--error { border-left: 3px solid var(--danger, #f44336); }
         .tool-step-icon { width: 14px; text-align: center; flex: none; }
-        .tool-step--running .tool-step-icon { display: inline-block; animation: jfc-spin 1s linear infinite; }
+        .tool-step--running .tool-step-icon { display: inline-block; animation: loading-spin 1s linear infinite; }
         .tool-step-name { font-weight: 600; flex: none; }
         .tool-step-args { color: var(--pencil, #888); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .tool-step-summary { margin-left: auto; flex: none; color: var(--ok, #4caf50); }
@@ -408,7 +408,7 @@ export default function ChatPage() {
         .chat-reasoning { margin: 2px 0 6px; font-size: 12px; color: var(--pencil, #888); }
         .chat-reasoning > summary { cursor: pointer; user-select: none; opacity: 0.85; }
         .chat-reasoning-body { margin-top: 4px; padding: 8px 10px; border-left: 2px solid var(--rule, #e4e4e4); white-space: pre-wrap; font-family: var(--mono, ui-monospace, monospace); opacity: 0.85; }
-        @keyframes jfc-spin { to { transform: rotate(360deg); } }
+        @keyframes loading-spin { to { transform: rotate(360deg); } }
       `}</style>
       {drawerOpen && <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} aria-hidden="true" />}
       <aside className={`drawer${drawerOpen ? " drawer--open" : ""}`} aria-label="Chat sessions">

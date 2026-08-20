@@ -3,11 +3,11 @@
 # Pillar 5 of the QA gate. The heavy bag (container build + scan) runs only on
 # PR-to-main + main pushes + nightly. Lightweight SAST runs on every push.
 #
-# No DAST here. There was a `dast:` job that skipped every step when
-# docker-compose.vibehost-maistro.yml was absent — and that file has never been in
-# this repo, so the job reported green while scanning nothing. The deployment
-# stack it needs lives in the deployment repo; if DAST is wanted it belongs there,
-# next to the compose file that defines the target.
+# No DAST here. There was a `dast:` job that referenced a compose file that
+# was never part of this repo, so it skipped every step and reported green
+# while scanning nothing. The deployment stack it needs lives in the
+# deployment repo; if DAST is wanted it belongs there, next to the compose
+# file that defines the target.
 
 name: security
 

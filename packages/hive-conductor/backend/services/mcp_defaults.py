@@ -1,4 +1,4 @@
-"""Default MCP catalog — aligned with MAISTROcontainer_registry/MCP_servers manifests."""
+"""Default MCP catalog — aligned with this repo's MCP server manifests."""
 
 from __future__ import annotations
 

@@ -286,7 +286,7 @@ def test_mcp_manifest_dirs_includes_all_available(
 
     o = tmp_path / "override"
     o.mkdir()
-    j = tmp_path / "jfc"
+    j = tmp_path / "testdir"
     j.mkdir()
     f = tmp_path / "fallback"
     f.mkdir()

@@ -26,10 +26,7 @@ CF_KEY = os.environ.get("CLOUDFLARE_API_KEY", "")
 CF_ACCOUNT = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
 
 AZURE_KEY = os.environ.get("AZURE_OPENAI_API_KEY", "")
-AZURE_ENDPOINT = os.environ.get(
-    "AZURE_OPENAI_ENDPOINT",
-    "https://stronghold.services.ai.azure.com/openai/deployments/gpt-image-2-1",
-)
+AZURE_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
 
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
 
@@ -49,7 +46,7 @@ def _is_configured(provider: str) -> bool:
     if provider == "cloudflare":
         return bool(CF_KEY and CF_ACCOUNT)
     if provider == "azure":
-        return bool(AZURE_KEY)
+        return bool(AZURE_KEY and AZURE_ENDPOINT)
     if provider == "gemini":
         return bool(GEMINI_KEY)
     return False
