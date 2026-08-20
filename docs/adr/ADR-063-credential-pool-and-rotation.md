@@ -123,7 +123,7 @@ Four strategies, configurable per provider:
 | `random` | Select uniformly at random from available keys. Prevents thundering herd when multiple consumers share a pool. |
 | `least_used` | Pick the available key with the lowest `use_count`. Self-balances over time. |
 
-Strategy is set in `config.yaml` per provider, defaulting to `round_robin`.
+Strategy defaults to `round_robin`. (The original text said "set in `config.yaml` per provider" — no such file exists anywhere in the repo, and `config/settings.py` has no strategy field. A configuration surface is part of the wiring work below, not something this ADR can claim shipped.)
 
 ### 3. Two-level retry loop
 
@@ -203,7 +203,7 @@ class PoolStats:
     per_key: list[CredentialRecord]
 ```
 
-Exposed via the `/admin/credentials` endpoint in `maistro-server` and logged every 60 seconds during evolution runs.
+(The original text claimed exposure "via the `/admin/credentials` endpoint in `maistro-server`" and a 60-second logger during evolution runs. Neither exists — maistro-server mounts no admin router, and no periodic stats logger was ever written. `get_stats()` has no production caller; building the surface is deferred with the wiring, below.)
 
 ## Consequences
 
@@ -269,6 +269,20 @@ maistro/credentials/
 > `quality/reachability-baseline.json`. The key pool rotates, cools down,
 > blocks on 401/403 and reports stats — and nothing in a running process calls
 > it. Same shape as ADR-066's P1 layer.
+>
+> **Wiring decision (2026-08-20).** Both modules stay in the baseline
+> deliberately. Honest wiring is blocked on a fact about the system, not a
+> missing import: **no multi-key credential source exists anywhere** — every
+> production path resolves exactly one key per (provider, user), the vault is
+> a flat single-value KV, and the stated consumer (`maistro-evolve`'s
+> provider) is itself unreachable. "The next key" is not a meaningful concept
+> in any running process yet. Per the Stream-4 checkpoint-5 constraint, the
+> pool wires as part of Provider/Invocation convergence (convergence plan
+> stage 5), where a multi-key ingest is designed rather than improvised at
+> one call site. Two library defects to fix when that lands:
+> `execute_with_pool` accepts and ignores its `backoff_config` (hardcodes
+> 0.5s/8s), and callers must raise typed errors (`status_code`-bearing) or
+> `classify_error` sees `unknown` and rotation never rotates.
 
 ```gherkin
 Feature: Credential pool selection strategies
