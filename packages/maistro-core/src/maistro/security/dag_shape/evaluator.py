@@ -48,9 +48,11 @@ async def evaluate_dag_shape(
     judge = proportionality_judge or RuleProportionalityJudge()
 
     warden_verdict = await warden.scan(shape.rationale, "dag_rationale")
-    if not warden_verdict.clean and warden_verdict.blocked:
+    if not warden_verdict.clean:
         return DagShapeVerdict(status="blocked", safety_flags=warden_verdict.flags)
-    safety_flags = warden_verdict.flags if not warden_verdict.clean else ()
+    # Only reachable when clean=True, so there are no safety flags left to carry
+    # forward into the budget/proportionality verdicts below.
+    safety_flags: tuple[str, ...] = ()
 
     action = ProposedAction(
         name=f"synth_dag:{len(shape.node_kinds)}_nodes",

@@ -504,7 +504,7 @@ def _register_layer_routes(
         return JSONResponse(content=[lyr.to_dict() for lyr in layers])
 
 
-def _register_job_routes(
+def _register_job_routes(  # noqa: C901  route-registration closure: independent handlers, one per endpoint
     router: APIRouter,
     store: CanvasStore,
     executor: CanvasExecutor,

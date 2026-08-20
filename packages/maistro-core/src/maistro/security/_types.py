@@ -51,14 +51,15 @@ class WardenVerdict:
     """Outcome of a Warden scan.
 
     ``blocked`` is a severity tier, not a duplicate of ``not clean``: it is
-    True only when two or more independent reject patterns hit (detector sets
-    it; heuristic/semantic/LLM layers never do). ``blocked=True`` therefore
-    implies ``clean=False``, never the reverse. Consumers choose the threshold
-    their boundary warrants: the Gate refuses user input on ANY non-clean
-    verdict (strictest boundary), while dag-shape evaluation hard-blocks a
-    proposed DAG only on the high-confidence tier and records the flags
-    otherwise. Both behaviors are asserted by tests — do not repurpose the
-    field without updating both consumers.
+    True whenever any reject-pattern flag hits (detector sets it; heuristic/
+    semantic/LLM layers never do -- those return ``blocked=False`` even
+    though they are also non-clean). ``blocked=True`` therefore implies
+    ``clean=False``, never the reverse. Consumers choose the threshold their
+    boundary warrants: the Gate refuses user input on ANY non-clean verdict
+    (strictest boundary), while dag-shape evaluation now also hard-blocks a
+    proposed DAG on ANY non-clean verdict (a single-pattern injection is not
+    "fine" for a DAG that will run unattended). Both behaviors are asserted
+    by tests -- do not repurpose the field without updating both consumers.
     """
 
     clean: bool = True

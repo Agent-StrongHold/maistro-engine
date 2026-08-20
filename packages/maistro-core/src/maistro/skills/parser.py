@@ -35,6 +35,9 @@ UNVETTED_TRUST_TIER = "t3"
 
 _DIRECTIONAL_CHARS = frozenset(
     {
+        0x200B,  # ZERO WIDTH SPACE
+        0x200C,  # ZERO WIDTH NON-JOINER
+        0x200D,  # ZERO WIDTH JOINER
         0x200E,
         0x200F,
         0x202A,
@@ -46,6 +49,8 @@ _DIRECTIONAL_CHARS = frozenset(
         0x2067,
         0x2068,
         0x2069,
+        0xFEFF,  # ZERO WIDTH NO-BREAK SPACE / BOM
+        0x00AD,  # SOFT HYPHEN
     }
 )
 

@@ -46,14 +46,15 @@ async def _authenticate(websocket: WebSocket, permission: str | None = None) -> 
 
 @router.websocket("/tasks/{task_id}")
 async def stream_task(websocket: WebSocket, task_id: str) -> None:
-    if await _authenticate(websocket) is None:
+    user = await _authenticate(websocket)
+    if user is None:
         return
     await websocket.accept()
     try:
         from services.engine import get_engine
 
         engine = get_engine()
-        async for event in engine.iter_task_events(task_id):
+        async for event in engine.iter_task_events(task_id, user_id=str(user["id"])):
             await websocket.send_json(event)
             if event["status"] in ("completed", "failed"):
                 break

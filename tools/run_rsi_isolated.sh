@@ -104,11 +104,15 @@ COV_SOURCE='packages/maistro-evolve/src,packages/maistro-rsi/src'
 # from BOTH target packages.
 E='packages/maistro-evolve/src/maistro_evolve'
 R='packages/maistro-rsi/src/maistro_rsi'
-TARGETS="$E/serialize.py,$E/audit.py,$E/diversity.py,$E/crossover.py,$E/mutate.py,\
-$E/optimizer.py,$E/population.py,$E/tournament.py,$E/reflect.py,$E/harness.py,\
-$E/fitness.py,$E/cycle.py,$E/architecture_fit.py,$E/scorecard.py,$E/types.py,\
-$R/merge.py,$R/competitors.py,$R/scout.py,$R/harvest.py,$R/evolve_bridge.py,\
-$R/candidate_fitness.py,$R/quota_burn.py,$R/quarantine.py,$R/htr.py,$R/coordinator.py"
+# Improvement targets are algorithm/behavior files ONLY. The loop must never be
+# allowed to edit the files that constrain or score it: the quarantine gate,
+# fitness/scorecard/tournament scoring, population culling, audit log, and the
+# harvest/merge PR-creation path are all deliberately EXCLUDED so a candidate
+# can't weaken its own containment (RSI-containment review K-3/E-1).
+TARGETS="$E/serialize.py,$E/diversity.py,$E/crossover.py,$E/mutate.py,\
+$E/optimizer.py,$E/reflect.py,$E/harness.py,$E/cycle.py,$E/architecture_fit.py,\
+$E/types.py,$R/competitors.py,$R/scout.py,$R/evolve_bridge.py,$R/htr.py,\
+$R/coordinator.py"
 
 # Free-router expansion (before the roster is frozen): a `openrouter/free` /
 # `or-free-router` entry is a random-model SELECTOR, not a scorable model. Resolve
@@ -133,15 +137,15 @@ if [[ -n "$GENOME_MODELS" && "$GENOME_MODELS" == *free* ]]; then
     fi
 fi
 
-# RLPHD promotion review. Default OFF for unattended auto-harvest: the strict
-# fitness scorecard (tests/coverage/assertion-strength/no-doc-regression/vacuous-
-# test/syntax/collectability/regression-judge) already gates every promotion, and
-# a COLD review model emits a constant p=0.5 that reverts 100% of promotions to
-# flagged/ (no auto-PRs) without actually discriminating. Set
-# MAISTRO_RSI_PROMOTION_REVIEW=on to keep the human-review gate.
-REVIEW_FLAG="--no-promotion-review"
-if [[ "${MAISTRO_RSI_PROMOTION_REVIEW:-off}" == "on" ]]; then
-    REVIEW_FLAG=""
+# RLPHD promotion review. Default ON (safe posture): a self-improving loop must
+# not auto-open PRs without the review gate. This is deliberately conservative —
+# a COLD review model emits a constant p=0.5 that reverts ~100% of promotions to
+# flagged/ (no auto-PRs) — but "nothing auto-promotes" is the correct default for
+# an experimental/opt-in subsystem. Set MAISTRO_RSI_PROMOTION_REVIEW=off to run
+# fully unattended, relying only on the fitness scorecard.
+REVIEW_FLAG=""
+if [[ "${MAISTRO_RSI_PROMOTION_REVIEW:-on}" == "off" ]]; then
+    REVIEW_FLAG="--no-promotion-review"
 fi
 
 # Unified live evolution: GENOME_MODELS set ⇒ the population (persisted in

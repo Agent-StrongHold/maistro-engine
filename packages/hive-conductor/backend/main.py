@@ -29,7 +29,6 @@ from routes import (
     dag_runs,
     dags,
     dashboard_layout,
-    design,
     eval_judge,
     feedback,
     harness,
@@ -274,11 +273,10 @@ def create_app() -> FastAPI:
     app.include_router(audit.router, prefix="/v1/audit")
     app.include_router(quotas.router, prefix="/v1/quotas")
     app.include_router(_confirms_router, prefix="/v1/confirms")
-    app.include_router(design.router, prefix="/v1")
-
     # Optional feature slices degrade explicitly: a missing dependency may keep
     # the base API available, but it must never make an entire route family
     # disappear without an actionable startup log.
+    _include_optional_router(app, "routes.design", prefix="/v1")
     _include_optional_router(app, "routes.canvas")
     _include_optional_router(app, "routes.pm_fleet_v2")
     _include_optional_router(app, "routes.evolution", prefix="/v1/evolution")

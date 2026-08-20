@@ -28,6 +28,7 @@ from typing import Any, Protocol
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel, Field
 
+from maistro_canvas.auth import CurrentUser, get_current_user
 from maistro_canvas.canvas.asset_compositor import (
     PlannedRender,
     RenderPlan,
@@ -611,6 +612,7 @@ def make_router(get_store: GetStore) -> APIRouter:
     async def list_instances(
         canvas_id: str = Path(...),
         store: AssetStore = Depends(store_dep),
+        auth: CurrentUser = Depends(get_current_user),
     ) -> list[AssetInstanceOut]:
         rows = await store.list_instances(canvas_id)
         return [_instance_to_out(r) for r in rows]
@@ -622,6 +624,7 @@ def make_router(get_store: GetStore) -> APIRouter:
         profile_id: str = Path(...),
         body: ChildProfileIn = Body(...),
         store: AssetStore = Depends(store_dep),
+        auth: CurrentUser = Depends(get_current_user),
     ) -> ChildProfileOut:
         if profile_id != body.profile_id:
             raise HTTPException(409, {"detail": "profile_id in path and body do not match"})
@@ -641,6 +644,7 @@ def make_router(get_store: GetStore) -> APIRouter:
     async def get_profile(
         profile_id: str = Path(...),
         store: AssetStore = Depends(store_dep),
+        auth: CurrentUser = Depends(get_current_user),
     ) -> ChildProfileOut:
         profile = await store.get_profile(profile_id)
         if profile is None:
@@ -665,6 +669,7 @@ def make_router(get_store: GetStore) -> APIRouter:
     async def create_book(
         body: BookIn = Body(...),
         store: AssetStore = Depends(store_dep),
+        auth: CurrentUser = Depends(get_current_user),
     ) -> BookOut:
         try:
             volumes = tuple(_deser_style_volume(sv.model_dump()) for sv in body.style_volumes)
@@ -687,6 +692,7 @@ def make_router(get_store: GetStore) -> APIRouter:
     async def get_book(
         book_id: str = Path(...),
         store: AssetStore = Depends(store_dep),
+        auth: CurrentUser = Depends(get_current_user),
     ) -> BookOut:
         book = await store.get_book(book_id)
         if book is None:
@@ -698,6 +704,7 @@ def make_router(get_store: GetStore) -> APIRouter:
         book_id: str = Path(...),
         body: BookIn = Body(...),
         store: AssetStore = Depends(store_dep),
+        auth: CurrentUser = Depends(get_current_user),
     ) -> BookOut:
         if book_id != body.book_id:
             raise HTTPException(409, {"detail": "book_id in path and body do not match"})
@@ -723,6 +730,7 @@ def make_router(get_store: GetStore) -> APIRouter:
         canvas_id: str = Path(...),
         body: PlanRequest = Body(default_factory=PlanRequest),
         store: AssetStore = Depends(store_dep),
+        auth: CurrentUser = Depends(get_current_user),
     ) -> RenderPlanModel:
         try:
             instances = await store.list_instances(canvas_id)

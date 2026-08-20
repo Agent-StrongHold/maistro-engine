@@ -46,6 +46,15 @@ _PUBLIC_EXACT = frozenset(
 _ADMIN_CHAT_BLOCKED = ("/v1/chat/",)
 
 _PROTECTED_OPS: dict[str, dict[str, str]] = {
+    "GET": {
+        # Reading another principal's harness/RSI session stream exposes
+        # in-flight code, agent reasoning, and secrets in transit — the same
+        # sensitivity as starting the run, so it takes the same scope. Plain
+        # authentication is not enough for these read routes.
+        "/v1/harness": "harness.execute",
+        "/v1/rsi": "rsi.execute",
+        "/v1/evolution": "rsi.execute",
+    },
     "DELETE": {
         "/v1/settings": "config.delete",
         "/v1/agents": "agents.delete",

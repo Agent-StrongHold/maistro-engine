@@ -205,7 +205,9 @@ def _seed_if_empty() -> None:
     _seed_memory_entries_a()
     _seed_dags()
     _seed_messages()
-    _seed_audit_log()
+    # Audit log is intentionally NOT seeded: fabricating security events (logins,
+    # gate_blocks, elevations) into a fresh instance's audit trail is misleading.
+    # An empty audit log renders as "no records".
     _seed_memory_entries_b()
 
 
@@ -535,30 +537,6 @@ def _seed_messages() -> None:
             category="quota",
             created_at=t,
         ).model_dump(mode="json")
-
-
-def _seed_audit_log() -> None:
-    if len(audit_log) == 0:
-        from routes.audit import AuditEntry
-
-        t = now()
-        for action, actor, target, severity in [
-            ("login", "admin", None, "info"),
-            ("gate_block", "Bouncer", "unauthenticated_request", "warning"),
-            ("dag_run", "Conductor", "Security Audit Pipeline", "info"),
-            ("elevate", "admin", "agent-1", "warning"),
-            ("config_change", "admin", "litellm_config", "info"),
-        ]:
-            eid = str(uuid4())
-            audit_log[eid] = AuditEntry(
-                id=eid,
-                action=action,
-                actor=actor,
-                target=target,
-                detail={},
-                severity=severity,
-                created_at=t,
-            ).model_dump(mode="json")
 
 
 def _seed_memory_entries_b() -> None:

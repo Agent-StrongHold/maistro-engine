@@ -7,6 +7,8 @@ import subprocess
 from rich.console import Console
 from typer import Typer
 
+from maistro.security.warden.sanitizer import strip_terminal_escapes
+
 app = Typer(help="Upgrade maistro to the latest version.")
 console = Console()
 
@@ -24,9 +26,9 @@ def upgrade_main() -> None:
             timeout=60,
         )
         if result.returncode == 0:
-            console.print(f"[green]{result.stdout.strip()}[/green]")
+            console.print(f"[green]{strip_terminal_escapes(result.stdout.strip())}[/green]")
         else:
-            console.print(f"[yellow]{result.stderr.strip()}[/yellow]")
+            console.print(f"[yellow]{strip_terminal_escapes(result.stderr.strip())}[/yellow]")
     except FileNotFoundError:
         console.print("[red]git not found[/red]")
         return

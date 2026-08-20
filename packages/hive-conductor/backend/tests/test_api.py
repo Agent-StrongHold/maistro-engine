@@ -308,7 +308,7 @@ def test_websocket_streams_task_events() -> None:
 
     c = _login()
 
-    async def _fake_iter(task_id: str):
+    async def _fake_iter(task_id: str, *, user_id: str | None = None):
         yield {"id": task_id, "status": "running", "progress": 0.5, "current_step": "planning"}
         yield {"id": task_id, "status": "completed", "progress": 1.0, "current_step": "done"}
 

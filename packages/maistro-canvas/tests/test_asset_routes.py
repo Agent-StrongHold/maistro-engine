@@ -12,6 +12,8 @@ from fastapi.testclient import TestClient
 from maistro_canvas.canvas.asset_routes import make_router
 from maistro_canvas.canvas.asset_store import InMemoryAssetStore
 
+TEST_TOKEN = "test-canvas-token"
+
 
 @pytest.fixture
 def store() -> InMemoryAssetStore:
@@ -19,10 +21,14 @@ def store() -> InMemoryAssetStore:
 
 
 @pytest.fixture
-def client(store: InMemoryAssetStore) -> Iterator[TestClient]:
+def client(store: InMemoryAssetStore, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+    monkeypatch.setenv("CANVAS_API_TOKEN", TEST_TOKEN)
     app = FastAPI()
     app.include_router(make_router(get_store=lambda: store))
-    with TestClient(app) as c:
+    with TestClient(
+        app,
+        headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+    ) as c:
         yield c
 
 
@@ -60,6 +66,43 @@ def test_get_definition_404_when_missing(client: TestClient) -> None:
     r = client.get("/v2/canvas/asset-definitions/nope")
     assert r.status_code == 404
     assert r.json()["detail"]["code"] == "ASSET_DEFINITION_NOT_FOUND"
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Auth regression (every v2 handler must require a valid canvas token)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_missing_token_is_401(store: InMemoryAssetStore, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every v2 route must reject unauthenticated requests, not just the
+    v1 surface — this was previously a bare ``store_dep`` with no auth
+    dependency at all."""
+    monkeypatch.setenv("CANVAS_API_TOKEN", TEST_TOKEN)
+    app = FastAPI()
+    app.include_router(make_router(get_store=lambda: store))
+    with TestClient(app) as c:
+        r = c.get("/v2/canvas/asset-definitions/nope")
+    assert r.status_code == 401, r.text
+
+
+def test_wrong_token_is_401(store: InMemoryAssetStore, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CANVAS_API_TOKEN", TEST_TOKEN)
+    app = FastAPI()
+    app.include_router(make_router(get_store=lambda: store))
+    with TestClient(app, headers={"Authorization": "Bearer wrong-token"}) as c:
+        r = c.get("/v2/canvas/asset-definitions/nope")
+    assert r.status_code == 401, r.text
+
+
+def test_unconfigured_token_fails_closed_503(
+    store: InMemoryAssetStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("CANVAS_API_TOKEN", raising=False)
+    app = FastAPI()
+    app.include_router(make_router(get_store=lambda: store))
+    with TestClient(app, headers={"Authorization": "Bearer anything"}) as c:
+        r = c.get("/v2/canvas/asset-definitions/nope")
+    assert r.status_code == 503, r.text
 
 
 def test_register_then_get_definition_round_trip(client: TestClient) -> None:

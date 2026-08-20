@@ -216,7 +216,16 @@ class TestTuringSecurityBridge:
         bridge = TuringSecurityBridge(warden=warden)
         result = await bridge.scan_tool_result("content", tool_name="grep")
         assert result == {"verdict": "allowed", "flags": []}
-        assert warden.scan_calls == [("content", "turing-tool-result:grep")]
+        assert warden.scan_calls == [("content", "tool_result")]
+
+    async def test_scan_tool_result_blocks_on_unclean_verdict(self) -> None:
+        """Real ``Warden.scan`` returns clean=False/blocked=False for a single-flag
+        (suspicious-but-not-hard-blocked) verdict; the bridge must still report it
+        as blocked rather than assuming allowed."""
+        warden = FakeWarden(verdict="suspicious", flags=["injection"])
+        bridge = TuringSecurityBridge(warden=warden)
+        result = await bridge.scan_tool_result("content", tool_name="grep")
+        assert result == {"verdict": "blocked", "flags": ["injection"]}
 
     async def test_scan_tool_result_swallows_warden_exception(self) -> None:
         bridge = TuringSecurityBridge(warden=RaisingWarden())

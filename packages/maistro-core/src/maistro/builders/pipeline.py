@@ -22,6 +22,7 @@ Default pipeline:
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import Enum
@@ -40,6 +41,39 @@ logger = logging.getLogger("maistro.builders.pipeline")
 
 _SPEC_SUMMARY_LIMIT = 2000
 _CLEAN_SIGNALS = ("no violations", "lgtm", "approved", "all checks pass", "clean")
+
+# Words that negate a clean signal appearing shortly after them, e.g. "not
+# clean", "isn't approved", "never lgtm". Substring matching on _CLEAN_SIGNALS
+# alone is a weak self-attestation check to begin with (see _is_clean's
+# docstring) -- this at least keeps it from being flipped by the negation of
+# its own keywords, which an implementer (human or LLM) could otherwise
+# trivially trigger by writing e.g. "this is NOT clean, needs work".
+_NEGATION_WORDS = frozenset(
+    {
+        "not",
+        "no",
+        "never",
+        "without",
+        "isn't",
+        "aren't",
+        "wasn't",
+        "weren't",
+        "hasn't",
+        "haven't",
+        "hadn't",
+        "doesn't",
+        "don't",
+        "didn't",
+        "won't",
+        "can't",
+        "cannot",
+        "n't",
+    }
+)
+# How many words immediately before a clean-signal match to scan for a
+# negation word, e.g. "definitely not entirely clean" (2 words between).
+_NEGATION_WINDOW = 4
+_WORD_RE = re.compile(r"[a-z']+")
 
 
 def build_spec_summary(spec: Any) -> str:
@@ -146,8 +180,26 @@ class PipelineRun:
 
 
 def _is_clean(text: str) -> bool:
+    """True if ``text`` contains an unnegated clean signal.
+
+    Plain substring matching against ``_CLEAN_SIGNALS`` would treat "not
+    clean" or "isn't approved" as a pass, which is trivial for the IMPLEMENT
+    stage's own output (possibly LLM-generated) to trigger by accident or
+    design. This adds a negation check over the few words preceding each
+    match; it is still a free-text heuristic, not a structural verdict --
+    see the module docstring's gate description for the stronger, structured
+    alternative this stands in for.
+    """
     lowered = text.lower()
-    return any(sig in lowered for sig in _CLEAN_SIGNALS)
+    for sig in _CLEAN_SIGNALS:
+        start = 0
+        while (pos := lowered.find(sig, start)) != -1:
+            start = pos + 1
+            preceding_words = _WORD_RE.findall(lowered[:pos])[-_NEGATION_WINDOW:]
+            negated = any(w in _NEGATION_WORDS or w.endswith("n't") for w in preceding_words)
+            if not negated:
+                return True
+    return False
 
 
 def _decompose_skip_if(ctx: RunContext) -> bool:

@@ -6,6 +6,7 @@ common injection patterns. Pattern data lives in security/patterns.py.
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from enum import StrEnum
 
@@ -62,7 +63,13 @@ def wrap_external_content(
     subject: str = "",
 ) -> str:
     """Wrap untrusted external content with security boundaries."""
-    sanitized = content.replace(_START_MARKER, "").replace(_END_MARKER, "")
+    normalized = _normalize_text(content)
+    # Case-insensitive strip, matching contains_markers()'s uppercasing -- a
+    # forged marker in any case (or hidden behind invisible/NFKC-foldable
+    # chars, stripped by _normalize_text above) must not survive into the
+    # wrapped output and be mistaken for a real boundary marker.
+    sanitized = re.sub(re.escape(_START_MARKER), "", normalized, flags=re.IGNORECASE)
+    sanitized = re.sub(re.escape(_END_MARKER), "", sanitized, flags=re.IGNORECASE)
 
     parts = [_START_MARKER, _SECURITY_NOTICE, f"Source: {source.value}"]
     if sender:

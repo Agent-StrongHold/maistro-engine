@@ -116,7 +116,11 @@ class TaskQueue:
         task = self._tasks.get(task_id)
         if task is None:
             return None
-        if user_id is not None and task.user_id and task.user_id != user_id:
+        # Fail closed: when a caller scopes by user_id, a task whose owner is
+        # empty ("") must NOT match — the old `task.user_id and ...` guard
+        # short-circuited on the empty string and returned ownerless tasks to
+        # any caller. A caller who wants no scoping passes user_id=None.
+        if user_id is not None and task.user_id != user_id:
             return None
         return task
 
@@ -208,7 +212,9 @@ class TaskQueue:
         """
         all_tasks = list(self._tasks.values())
         if user_id is not None:
-            all_tasks = [t for t in all_tasks if not t.user_id or t.user_id == user_id]
+            # Fail closed: exact-owner match only. The old `not t.user_id or ...`
+            # leaked every ownerless ("") task into every user-scoped listing.
+            all_tasks = [t for t in all_tasks if t.user_id == user_id]
 
         if cursor:
             found = False

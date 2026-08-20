@@ -11,6 +11,11 @@
 
 name: security
 
+# Least privilege: SAST/supply-chain/container scanning only read the repo.
+# (Image signing was removed; if it returns, grant id-token: write on that job.)
+permissions:
+  contents: read
+
 on:
   pull_request:
     branches: [main, integration, develop]

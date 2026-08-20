@@ -104,7 +104,7 @@ class Warden:
         if flags:
             return WardenVerdict(
                 clean=False,
-                blocked=len(flags) >= 2,
+                blocked=len(flags) >= 1,
                 flags=tuple(flags),
                 confidence=0.9,
             )

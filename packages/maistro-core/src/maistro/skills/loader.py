@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from maistro.skills.parser import parse_skill_file
+from maistro.skills.parser import parse_skill_file, security_scan
 from maistro.types.tool import ToolDefinition
 
 if TYPE_CHECKING:

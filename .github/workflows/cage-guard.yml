@@ -1,5 +1,8 @@
 name: Cage Guard — Auto-reject PRs touching cage/ or eval/
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     paths:

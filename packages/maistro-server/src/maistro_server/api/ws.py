@@ -88,6 +88,47 @@ def _ws_owner_id(token: str | None, settings: Settings) -> str | None:
     return principal.user_id if principal else None
 
 
+def _extract_ws_token(websocket: WebSocket, query_token: str | None) -> str | None:
+    """Resolve the bearer token, preferring headers over the URL query string.
+
+    A token in the query string ends up in proxy/access logs, browser history
+    and Referer headers. Browsers can't set arbitrary WS headers, so the
+    supported path is the `Sec-WebSocket-Protocol` subprotocol; non-browser
+    clients may send `Authorization: Bearer`. The `?token=` query param is kept
+    only as a deprecated fallback for existing clients.
+    """
+    auth = websocket.headers.get("authorization")
+    if auth and auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    proto = websocket.headers.get("sec-websocket-protocol")
+    if proto:
+        # Client sends: Sec-WebSocket-Protocol: bearer, <token>
+        parts = [p.strip() for p in proto.split(",")]
+        if len(parts) >= 2 and parts[0].lower() == "bearer":
+            return parts[1]
+    return query_token
+
+
+def _ws_origin_allowed(websocket: WebSocket, settings: Settings) -> bool:
+    """Reject cross-site WebSocket handshakes (CORS doesn't cover WS).
+
+    A browser attaches cookies/credentials to a WS handshake with no preflight,
+    so any page could open an authenticated socket unless the Origin is checked
+    here. Non-browser clients send no Origin and are unaffected.
+    """
+    origin = websocket.headers.get("origin")
+    if origin is None:
+        return True
+    return origin in settings.cors_origins
+
+
+def _authorize_ws(websocket: WebSocket, query_token: str | None, settings: Settings) -> str | None:
+    """Origin check + token resolution in one gate. Returns owner_id or None."""
+    if not _ws_origin_allowed(websocket, settings):
+        return None
+    return _ws_owner_id(_extract_ws_token(websocket, query_token), settings)
+
+
 @router.websocket("/stream/{task_id}")
 async def stream_task(
     websocket: WebSocket,
@@ -96,7 +137,7 @@ async def stream_task(
     settings: Annotated[Settings, Depends(get_settings)],
     token: str | None = Query(None),
 ) -> None:
-    owner_id = _ws_owner_id(token, settings)
+    owner_id = _authorize_ws(websocket, token, settings)
     if owner_id is None:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return

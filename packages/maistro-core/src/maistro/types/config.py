@@ -75,7 +75,10 @@ class SecurityConfig(BaseModel):
         return value
 
     # Selects a maistro.security.permission_policy.PERMISSION_PRESETS entry.
-    permission_preset: str = "none"
+    # Default arms the dangerous-tools-admin gate: dangerous tool names require
+    # the admin role, while every other tool stays permitted-by-absence (formal
+    # invariant I6). Set to "none" to disable even that gate.
+    permission_preset: str = "dangerous_tools_admin"
     # Explicit tool_name -> [role, ...] overrides, applied on top of the preset.
     permissions: dict[str, list[str]] = Field(default_factory=dict)
     # Defaults False: no admin unlock path exists yet for the 3-strike ladder

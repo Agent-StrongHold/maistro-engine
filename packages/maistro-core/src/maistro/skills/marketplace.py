@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from maistro.skills.fixer import fix_content
 from maistro.skills.parser import parse_skill_file, security_scan
 from maistro.types.skill import SkillDefinition, SkillMetadata
 
