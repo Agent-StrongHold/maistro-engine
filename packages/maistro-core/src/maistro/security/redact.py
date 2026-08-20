@@ -70,7 +70,19 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
         re.compile(r"[?&]\w{0,64}(?:secret|token|key|password)\w{0,64}=[^&\s]+", re.IGNORECASE),
         "[REDACTED_QUERY_PARAM]",
     ),
-    # URL userinfo (user:pass@host).
+    # Sentry DSNs (ADR-064/AC-43). MUST stay above the URL-userinfo pattern:
+    # both match a DSN from its first character, span-merge ties on equal
+    # start and length go to the earlier-listed pattern, and AC-43 requires
+    # this label. (A DSN followed by extra non-space still gets redacted
+    # either way — only the label differs, the key never survives.)
+    (
+        re.compile(
+            r"https?://[0-9a-f]{8,64}@o\d{1,12}\.ingest(?:\.[a-z0-9-]{1,20})?\.sentry\.io/\d{1,12}"
+        ),
+        "[REDACTED_SENTRY_DSN]",
+    ),
+    # URL userinfo (user:pass@host, or username-only per ADR-064/AC-25 —
+    # a bare username before @ is still a credential).
     #
     # The `(?<!\w)` anchor is load-bearing for performance, not matching. Without
     # it `\w+` has no left edge, so `finditer` restarts inside every long word
@@ -80,8 +92,8 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # seconds — reachable from untrusted content, no attacker required. Anchoring
     # is 3333x faster at 32 KB and linear thereafter.
     (
-        re.compile(r"(?<!\w)\w+://[^\s/@:]+:[^\s@]+@[^\s]*"),
-        "[REDACTED_URL_USERINFO]",
+        re.compile(r"(?<!\w)\w+://[^\s/@:]+(?::[^\s@]*)?@[^\s]*"),
+        "[REDACTED_URL_CREDENTIALS]",
     ),
     # AWS access keys
     (
@@ -99,6 +111,37 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
             r"(?:sk-ant-|sk_live_|sk_test_|sk-|ghp_|ghs_|github_pat_|AIza|xoxb-|xoxp-|pplx-|glpat-|ATATT)[A-Za-z0-9_-]{10,}"
         ),
         "[REDACTED_API_KEY]",
+    ),
+    # Telegram bot tokens (ADR-064/AC-42): numeric bot id, colon, "AA" plus
+    # the rest of the token alphabet. Every quantifier is bounded and the
+    # lookarounds give the digit run a hard left/right edge, so a long run of
+    # digits costs constant work per offset (the AC-36 bug class).
+    (
+        re.compile(r"(?<!\d)\d{8,10}:AA[A-Za-z0-9_-]{25,40}(?![A-Za-z0-9_-])"),
+        "[REDACTED_TELEGRAM_TOKEN]",
+    ),
+    # JSON fields whose NAME marks the value sensitive (ADR-064/AC-12..14).
+    # The whole `"name": "value"` pair is consumed — the engine substitutes
+    # fixed strings, no backreferences, and AC-12..14 require the label
+    # present and the value gone, not the key preserved. Overlap with an
+    # inner pattern firing inside the value (an sk- key, AC-31) resolves to
+    # this span: it starts earlier and is longer.
+    #
+    # A sensitive term counts only as a whole `_`/`-`/`.`-separated segment of
+    # the field name: "auth_token" and "user.password" match, "tokenizer" and
+    # "secretary" do not — a substring hit would corrupt ordinary diagnostic
+    # JSON wholesale. Bare "key"/"auth" are NOT in the alternation ("monkey",
+    # "author"); the compound forms are spelled out instead. The value consumes
+    # JSON escape sequences atomically so an escaped quote cannot end the match
+    # early and leak the tail of the credential.
+    (
+        re.compile(
+            r'"(?:[A-Za-z0-9._-]{0,64}[_.-])?(?:password|passwd|pwd|secret|token|credential'
+            r'|api[_-]?key|apikey|access[_-]?key|private[_-]?key)(?:[_.-][A-Za-z0-9._-]{0,64})?"'
+            r'\s*:\s*"(?:[^"\\]|\\.){0,4096}"',
+            re.IGNORECASE,
+        ),
+        "[REDACTED_JSON_SECRET]",
     ),
 ]
 

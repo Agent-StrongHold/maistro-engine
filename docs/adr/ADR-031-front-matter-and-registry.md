@@ -46,8 +46,8 @@ title: <human-readable title>
 repo: maistro-engine | Project_mAIstro | AgentTuring | stronghold
 kind: adr | spec
 
-# Lifecycle
-status: Proposed | Accepted | Implemented | Superseded | Blocked | Abandoned
+# Lifecycle — status vocabulary and transitions are governed by ADR-097
+status: Proposed | Accepted | Implemented | Superseded | ...  # full per-kind list in ADR-097
 created: YYYY-MM-DD
 accepted: YYYY-MM-DD       # optional until status >= Accepted
 implemented: YYYY-MM-DD    # optional until status == Implemented
@@ -77,15 +77,19 @@ All fields are required. Empty lists (`[]`) are valid for relationship and contr
 
 ### 2. Status lifecycle
 
-```
-Proposed ──► Accepted ──► Implemented ──► Superseded
-   │            │
-   ▼            ▼
-Abandoned    Blocked ──► Accepted (when unblocked)
-```
+The status vocabulary and the per-kind transition machine are defined by
+`engine#ADR-097` and enforced by `tools/lint_lifecycle.py`; this ADR only
+requires that every document carry a `status` from that machine.
 
-- `Blocked` means a `blocked-by:` dependency is unmet. The artifact does not progress until the blocker accepts.
-- `Abandoned` means the decision was deliberately not taken. The ADR remains for traceability — it is not the same as deletion.
+This section originally defined its own smaller machine, including `Blocked`
+and `Abandoned`. Those two states appeared in zero documents across the
+system and in no transition table once ADR-097 landed — vocabulary the
+schema could parse but never reach — and were removed from
+`maistro_registry.schema.Status` rather than kept as dead members
+(`blocked-by:` still exists as a *relationship*; it never needed a status).
+A deliberately-not-taken decision is `Denied` (pre-acceptance) or
+`Deprecated`/`Superseded` (post-acceptance) in the ADR-097 machine.
+
 - `Superseded` requires a populated `supersedes:` field on the successor.
 
 ### 3. Numbering

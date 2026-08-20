@@ -35,6 +35,7 @@ owners:
 history:
   - status: Proposed
     date: 2026-06-01
+  - status: Accepted
 ---
 
 # SPEC-192: Persona authoring pipeline

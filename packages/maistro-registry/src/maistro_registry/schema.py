@@ -33,12 +33,16 @@ _Date = date
 
 
 class Status(StrEnum):
+    # `Blocked` and `Abandoned` were members here for months while appearing in
+    # neither of tools/lint_lifecycle.py's transition tables and in zero
+    # documents — vocabulary the machine could parse but never reach. Removed
+    # rather than wired: nothing ever wanted them, and an enum member no
+    # transition admits is exactly the built-but-never-wired shape this repo
+    # keeps finding in itself.
     PROPOSED = "Proposed"
     ACCEPTED = "Accepted"
     IMPLEMENTED = "Implemented"
     SUPERSEDED = "Superseded"
-    BLOCKED = "Blocked"
-    ABANDONED = "Abandoned"
     DEFERRED = "Deferred"
     # ADR-097 lifecycle machine. Which states apply to which kind (and the
     # forward-only transitions) is enforced by tools/lint_lifecycle.py.
@@ -112,10 +116,16 @@ def _is_valid_ref(value: str) -> bool:
 
 
 class HistoryEntry(BaseModel):
-    """One ADR-097 lifecycle transition: the status entered and when.
+    """One ADR-097 lifecycle transition: the status entered, when, and why.
 
     `date` is optional because backfilled entries (tools/backfill_history.py)
     omit it when the original transition date is unknown.
+
+    `reason` is optional prose for transitions whose motivation is not obvious
+    from the status alone — a rollback out of `Implemented`, a deprecation, a
+    denial. It lives on the entry rather than the document because a document
+    can be rolled back more than once, and a single document-level field would
+    keep only the latest story.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -124,6 +134,7 @@ class HistoryEntry(BaseModel):
     # `_Date` alias: the field name `date` would shadow the type during
     # pydantic's annotation evaluation.
     date: _Date | None = None
+    reason: str | None = None
 
 
 class FrontMatter(BaseModel):

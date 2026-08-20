@@ -24,6 +24,7 @@ owners:
 history:
   - status: Proposed
     date: 2026-06-23
+  - status: Implemented
 ---
 
 # ADR-062326-616c — Design skills code export capability

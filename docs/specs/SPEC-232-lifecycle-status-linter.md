@@ -14,7 +14,8 @@ blocks: []
 blocked-by: []
 contracts:
   - boundary
-tests: []
+tests:
+  - tests/tools/test_lint_lifecycle.py
 layer: Governance
 owners:
   - '@BlakeMatthews-dev'

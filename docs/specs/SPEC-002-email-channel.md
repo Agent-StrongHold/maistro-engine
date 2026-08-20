@@ -22,8 +22,6 @@ owners:
 history:
   - status: Proposed
     date: 2026-03-23
-  - status: AC Defined
-    date: 2026-06-20
 ---
 
 # SPEC-002: Email Channel

@@ -25,6 +25,7 @@ owners:
 history:
   - status: Proposed
     date: 2026-05-30
+  - status: Implemented
 ---
 
 # ADR-070: The Repertoire Pattern

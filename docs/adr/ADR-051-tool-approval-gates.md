@@ -27,6 +27,7 @@ owners:
 history:
   - status: Proposed
     date: 2026-05-13
+  - status: Implemented
 ---
 
 # ADR-051: Tool approval gates — plan preview, impact-weighted escalation, learned trust

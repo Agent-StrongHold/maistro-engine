@@ -141,6 +141,52 @@ def test_history_rejects_unknown_status_and_extra_keys() -> None:
         )
 
 
+def test_history_entry_reason_is_optional_and_survives_roundtrip() -> None:
+    """A transition may say why it happened; entries without a reason stay valid.
+
+    The reason lives on the entry rather than the document because a document
+    can be rolled back more than once — a single document-level field would
+    keep only the latest story.
+    """
+    fm = FrontMatter.model_validate(
+        _valid_dict()
+        | {
+            "history": [
+                {"status": "Implemented", "date": "2026-06-09"},
+                {
+                    "status": "Deprecated",
+                    "date": "2026-06-10",
+                    "reason": "rolled back: broke replay determinism",
+                },
+            ]
+        }
+    )
+    assert fm.history[0].reason is None
+    assert fm.history[1].reason == "rolled back: broke replay determinism"
+
+
+def test_history_entry_reason_does_not_relax_extra_forbid() -> None:
+    with pytest.raises(ValidationError):
+        FrontMatter.model_validate(
+            _valid_dict()
+            | {
+                "history": [
+                    {"status": "Deprecated", "reason": "why", "rationale": "duplicate field"}
+                ]
+            }
+        )
+
+
+def test_vestigial_statuses_are_gone() -> None:
+    """`Blocked` and `Abandoned` sat in the enum with no transition admitting
+    them and no document using them — vocabulary the machine could parse but
+    never reach. Removed; a document claiming one must now fail validation
+    instead of parsing into a state the lifecycle linter cannot evaluate."""
+    for ghost in ("Blocked", "Abandoned"):
+        with pytest.raises(ValidationError):
+            FrontMatter.model_validate(_valid_dict() | {"status": ghost})
+
+
 def test_superseded_by_alias_and_ref_validation() -> None:
     fm = FrontMatter.model_validate(_valid_dict() | {"superseded-by": ["maistro-engine#ADR-095"]})
     assert fm.superseded_by == ["maistro-engine#ADR-095"]

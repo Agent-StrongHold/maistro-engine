@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Lifecycle status linter for ADRs and Specs (ADR-097)."""
 
+import json
 import re
 import sys
 from pathlib import Path
 
 import yaml
+
+# Accepted violations, keyed by the linter's exact error string. Ratchets in
+# both directions (see main): the list can only shrink.
+BASELINE = Path(__file__).resolve().parents[1] / "quality" / "lifecycle-baseline.json"
 
 # ── Valid statuses ──────────────────────────────────────────────────────────
 
@@ -30,6 +35,7 @@ SPEC_STATUSES = [
     "Tests Passing",
     "Implemented",
     "Superseded",
+    "Deprecated",
 ]
 
 # ── Valid transitions (forward-only) ───────────────────────────────────────
@@ -45,16 +51,32 @@ ADR_TRANSITIONS: dict[str, set[str]] = {
     "Superseded": set(),
 }
 
+# Spec `Deprecated` withdraws a *contract*: the acceptance criteria stop being
+# promises the code must keep, without naming a successor (that is what
+# `Superseded` requires) and without claiming the work was never wanted (that
+# is `Will Not Implement`, only reachable before acceptance). It is reachable
+# from `Deferred` too, because a deferred spec's subject can be removed from
+# the codebase entirely while it waits — SPEC-179 sat in exactly that state,
+# describing a Flutter app whose tree had been deleted, expressible only as a
+# prose note until this state existed.
 SPEC_TRANSITIONS: dict[str, set[str]] = {
     "Proposed": {"Accepted", "Deferred", "Will Not Implement"},
-    "Deferred": {"Accepted", "Will Not Implement"},
-    "Accepted": {"AC Defined", "In Progress", "Tests Passing", "Implemented", "Superseded"},
-    "AC Defined": {"In Progress", "Tests Passing", "Implemented", "Superseded"},
-    "In Progress": {"Tests Passing", "Implemented", "Superseded"},
-    "Tests Passing": {"Implemented", "Superseded"},
-    "Implemented": {"Superseded"},
+    "Deferred": {"Accepted", "Will Not Implement", "Deprecated"},
+    "Accepted": {
+        "AC Defined",
+        "In Progress",
+        "Tests Passing",
+        "Implemented",
+        "Superseded",
+        "Deprecated",
+    },
+    "AC Defined": {"In Progress", "Tests Passing", "Implemented", "Superseded", "Deprecated"},
+    "In Progress": {"Tests Passing", "Implemented", "Superseded", "Deprecated"},
+    "Tests Passing": {"Implemented", "Superseded", "Deprecated"},
+    "Implemented": {"Superseded", "Deprecated"},
     "Will Not Implement": set(),
     "Superseded": set(),
+    "Deprecated": set(),
 }
 
 # ── Required fields per status ─────────────────────────────────────────────
@@ -80,6 +102,7 @@ SPEC_REQUIRED: dict[str, list[str]] = {
     "Deferred": ["title", "created"],
     "Will Not Implement": ["title", "created"],
     "Superseded": ["title", "created", "superseded-by"],
+    "Deprecated": ["title", "created"],
 }
 
 # ── Frontmatter parser ─────────────────────────────────────────────────────
@@ -114,9 +137,24 @@ def _ac_section(text: str) -> str | None:
     return after[:next_heading] if next_heading != -1 else after
 
 
+GHERKIN_SCENARIO_RE = re.compile(r"```gherkin\n(?:.*\n)*?\s*(?:@\S+\n\s*)*Scenario", re.MULTILINE)
+
+
 def has_acceptance_criteria(path: Path) -> bool:
-    section = _ac_section(path.read_text(encoding="utf-8"))
-    return section is not None and len(section.strip()) > 0
+    """A non-empty AC section, or Gherkin scenarios anywhere in the document.
+
+    Gherkin fences count wherever they sit because that is the corpus
+    convention scripts/check-ac-state.py enforces: a `Scenario:` inside a
+    ```gherkin block is a criterion by construction. SPEC-160's whole body is
+    39 scenarios under topic headings with no "## Acceptance Criteria" heading
+    at all — a heading-only check reports the corpus's densest criteria
+    document as having none.
+    """
+    text = path.read_text(encoding="utf-8")
+    section = _ac_section(text)
+    if section is not None and len(section.strip()) > 0:
+        return True
+    return GHERKIN_SCENARIO_RE.search(text) is not None
 
 
 # ── Validation ─────────────────────────────────────────────────────────────
@@ -162,7 +200,7 @@ def lint_file(path: Path) -> list[str]:
         )
 
     # 4. History validation
-    errors.extend(lint_history(path, fm, status, valid_statuses, transitions))
+    errors.extend(lint_history(path, fm, status, valid_statuses, transitions, kind))
 
     return errors
 
@@ -186,6 +224,7 @@ def lint_history(
     status: str,
     valid_statuses: list[str],
     transitions: dict[str, set[str]],
+    kind: str = "",
 ) -> list[str]:
     errors: list[str] = []
     history = fm.get("history")
@@ -198,9 +237,38 @@ def lint_history(
         if cur not in valid_statuses:
             errors.append(f"{path}: history contains invalid status '{cur}'")
             break
-        # Forward-only: cur must be reachable from prev via transitive closure
+        has_reason = bool(str(entry.get("reason") or "").strip())
+        # Forward-only: cur must be reachable from prev via transitive closure.
+        # One exception: an entry carrying a non-empty `reason` may move
+        # *backwards* — `prev` must be forward-reachable from `cur`, i.e. cur
+        # is genuinely an earlier state on some path. That is a *correction* —
+        # a status that was claimed and turned out false (SPEC-183 claimed
+        # Implemented with two of its four phases missing) — and the history
+        # must be able to record it, because the alternative observed in
+        # practice was documents whose ledger simply stopped matching reality.
+        # The reason is mandatory precisely so a silent downgrade still fails:
+        # going backwards costs a sentence. A reason does NOT legalise any
+        # other invalid hop (Deprecated → Superseded, Implemented →
+        # Implemented): those are not corrections, they are new claims the
+        # machine rejects.
         if prev and cur not in reachable_from(prev, transitions):
-            errors.append(f"{path}: invalid transition '{prev}' → '{cur}' in history")
+            is_backwards = prev in reachable_from(cur, transitions)
+            if not is_backwards:
+                errors.append(f"{path}: invalid transition '{prev}' → '{cur}' in history")
+            elif not has_reason:
+                errors.append(
+                    f"{path}: invalid transition '{prev}' → '{cur}' in history "
+                    f"(a backwards correction requires a `reason` on the entry)"
+                )
+        # A spec's Deprecated entry withdraws a contract; ADR-097 requires the
+        # withdrawal to say why on the entry itself. Checked here rather than
+        # in the required-fields table because that table sees only top-level
+        # fields, and the rationale belongs to the transition, not the document.
+        if kind == "spec" and cur == "Deprecated" and not has_reason:
+            errors.append(
+                f"{path}: 'Deprecated' history entry requires a non-empty `reason` "
+                f"(a contract withdrawal must say why)"
+            )
         prev = cur
 
     # Last history entry should match current status
@@ -216,20 +284,42 @@ def lint_history(
 # ── AC traceability ────────────────────────────────────────────────────────
 
 AC_ID_RE = re.compile(r"\*\*AC-(\d+)\*\*")
+GHERKIN_FENCE_RE = re.compile(r"```gherkin\n(.*?)```", re.DOTALL)
+AC_TAG_RE = re.compile(r"@AC-(\d+)\b")
 MARKER_RE = re.compile(r'@pytest\.mark\.ac\(["\']([^"\']+)["\']\)')
 PARAM_RE = re.compile(r'pytest\.mark\.ac\(["\']([^"\']+)["\']\)')
 
 
 def extract_ac_ids(path: Path) -> list[str]:
-    """Extract AC-N IDs from a spec's Acceptance Criteria section."""
-    section = _ac_section(path.read_text(encoding="utf-8"))
-    if section is None:
-        return []
+    """Extract AC-N IDs from a spec: bold ids in the AC section, plus `@AC-N`
+    tags inside ```gherkin fences anywhere in the document.
+
+    The Gherkin pass exists because `has_acceptance_criteria` accepts
+    fence-only documents (SPEC-160 has no AC heading at all) — accepting a
+    document's criteria while extracting none of them would exempt exactly
+    those documents from traceability: deleting every one of their test
+    markers would raise no error.
+    """
+    text = path.read_text(encoding="utf-8")
     fm = parse_frontmatter(path)
     spec_id = fm.get("id", "") if fm else ""
-    ids = []
-    for m in AC_ID_RE.finditer(section):
-        ids.append(f"{spec_id}/AC-{m.group(1)}")
+    ids: list[str] = []
+    seen: set[str] = set()
+
+    section = _ac_section(text)
+    sources = [section] if section is not None else []
+    sources.extend(m.group(1) for m in GHERKIN_FENCE_RE.finditer(text))
+    for source in sources:
+        for m in AC_ID_RE.finditer(source):
+            ac = f"{spec_id}/AC-{m.group(1)}"
+            if ac not in seen:
+                seen.add(ac)
+                ids.append(ac)
+        for m in AC_TAG_RE.finditer(source):
+            ac = f"{spec_id}/AC-{m.group(1)}"
+            if ac not in seen:
+                seen.add(ac)
+                ids.append(ac)
     return ids
 
 
@@ -275,13 +365,33 @@ def check_ac_traceability(spec_roots: list[str], test_roots: list[str]) -> list[
     return errors
 
 
+# ── Baseline ratchet ───────────────────────────────────────────────────────
+
+
+def load_baseline(path: Path = BASELINE) -> set[str]:
+    """Accepted-violation identities. A missing file is an empty baseline."""
+    if not path.exists():
+        return set()
+    return set(json.loads(path.read_text(encoding="utf-8"))["violations"])
+
+
+def apply_baseline(errors: list[str], baseline: set[str]) -> tuple[list[str], list[str]]:
+    """Split errors against the baseline: (new violations, stale entries).
+
+    Fails both directions on purpose, same as scripts/check-reachability.py: a
+    violation not in the baseline is a regression, and a baseline entry that no
+    longer occurs is a stale grant that would silently absorb the next
+    regression with the same identity. The list can only shrink.
+    """
+    errs = set(errors)
+    return sorted(errs - baseline), sorted(baseline - errs)
+
+
 # ── Main ───────────────────────────────────────────────────────────────────
 
 
-def main() -> int:
-    roots = sys.argv[1:] or ["docs/adr", "docs/specs"]
+def collect_errors(roots: list[str]) -> list[str]:
     all_errors = []
-
     for root in roots:
         root_path = Path(root)
         if not root_path.exists():
@@ -306,16 +416,54 @@ def main() -> int:
         "tests",
     ]
     all_errors.extend(check_ac_traceability(spec_roots, test_roots))
+    return all_errors
 
+
+def _report_raw(all_errors: list[str]) -> int:
     for err in all_errors:
         print(f"  ✗ {err}")
-
     if all_errors:
         print(f"\n{len(all_errors)} lifecycle error(s) found.")
         return 1
-
     print("✓ All documents pass lifecycle checks.")
     return 0
+
+
+def _report_ratcheted(all_errors: list[str]) -> int:
+    new, stale = apply_baseline(all_errors, load_baseline())
+
+    if new:
+        print(f"{len(new)} NEW lifecycle violation(s):\n")
+        for err in new:
+            print(f"  ✗ {err}")
+        print(
+            "\nFix the document, or — only for a violation that is genuinely the"
+            "\naccepted state of the world — add the exact error string to"
+            "\nquality/lifecycle-baseline.json with a rationale."
+        )
+
+    if stale:
+        print(f"\n{len(stale)} stale baseline entry(ies) — the violation no longer occurs:")
+        for err in stale:
+            print(f"  - {err}")
+        print(
+            "\nThe reviewed baseline must shrink when violations are fixed. Remove"
+            "\nthe stale entries from quality/lifecycle-baseline.json before merging."
+        )
+
+    if new or stale:
+        return 1
+
+    print(f"✓ All documents pass lifecycle checks (baseline: {len(all_errors)} accepted).")
+    return 0
+
+
+def main() -> int:
+    # Explicit roots are a raw spot-check (all violations printed, no baseline);
+    # the no-argument form is the CI gate and ratchets against BASELINE.
+    explicit_roots = sys.argv[1:]
+    all_errors = collect_errors(explicit_roots or ["docs/adr", "docs/specs"])
+    return _report_raw(all_errors) if explicit_roots else _report_ratcheted(all_errors)
 
 
 if __name__ == "__main__":

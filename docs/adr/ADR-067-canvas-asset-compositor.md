@@ -27,6 +27,7 @@ owners:
 history:
   - status: Proposed
     date: 2026-05-09
+  - status: Implemented
 ---
 
 # ADR-067: Canvas Asset Compositor

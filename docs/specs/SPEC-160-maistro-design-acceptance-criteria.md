@@ -65,6 +65,7 @@ owners:
 history:
   - status: Proposed
     date: 2026-05-29
+  - status: Implemented
 ---
 
 # SPEC-160 — maistro-design acceptance criteria

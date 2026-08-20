@@ -46,8 +46,6 @@ history:
     date: 2026-06-23
   - status: Implemented
     date: 2026-06-23
-  - status: Implemented
-    date: 2026-06-28
 ---
 
 # ADR-062326-702b: Multi-modality design outputs and hierarchical artifact containers

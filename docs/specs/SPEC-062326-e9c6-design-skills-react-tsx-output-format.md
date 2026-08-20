@@ -17,7 +17,8 @@ blocked-by: []
 contracts:
   - boundary
   - behavioral
-tests: []
+tests:
+  - packages/maistro-design/tests/test_design.py
 ac-modules:
   AC-1: maistro_design.types
   AC-2: maistro_design.skills.builtins
@@ -37,6 +38,7 @@ owners:
 history:
   - status: Proposed
     date: 2026-06-23
+  - status: Implemented
 ---
 
 # SPEC-062326-e9c6 — Design skills React/TSX output format

@@ -27,6 +27,7 @@ owners:
 history:
   - status: Proposed
     date: 2026-05-13
+  - status: Implemented
 ---
 
 # ADR-057: Memory exposure mode — configurable system-managed vs agent-managed

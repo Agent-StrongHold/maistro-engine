@@ -3,7 +3,7 @@ id: SPEC-179
 title: Flutter gateway node companion (iOS + Android) — monorepo app
 repo: maistro-engine
 kind: spec
-status: Deferred
+status: Deprecated
 created: 2026-05-13
 accepted: null
 implemented: null
@@ -15,9 +15,10 @@ related:
 contracts:
   - boundary
   - behavioral
-tests:
-  - apps/maistro-gateway-node-flutter/test/
-  - apps/maistro-gateway-node-flutter/integration_test/
+# No tests: the app tree these pointed at (apps/maistro-gateway-node-flutter/)
+# was removed from the monorepo; the paths dangled for months with no gate
+# noticing. See the Deprecated history entry.
+tests: []
 layer: UserClient
 owners:
   - '@BlakeMatthews-dev'
@@ -26,6 +27,14 @@ history:
     date: 2026-05-13
   - status: Deferred
     date: 2026-08-01
+  - status: Deprecated
+    date: 2026-08-20
+    reason: >-
+      The Flutter app tree this spec contracted (apps/maistro-gateway-node-flutter/)
+      was removed from the monorepo; no Dart source or test path remains, so the
+      spec's three acceptance criteria are unbindable as written. Withdrawn
+      without a successor during the convergence effort. A future companion app
+      should start from a new spec against the then-current gateway protocol.
 ---
 
 # SPEC-179: Flutter gateway node companion (monorepo)
