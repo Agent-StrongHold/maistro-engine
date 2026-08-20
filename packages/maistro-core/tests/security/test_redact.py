@@ -357,6 +357,27 @@ class TestRedactJSONFields:
         text = '{"monkey": "bongo", "author": "Jane Doe"}'
         assert redact(text) == text
 
+    def test_term_must_be_a_whole_name_segment(self):
+        # "tokenizer" contains `token` and "secretary" contains `secret`, but
+        # neither NAMES a credential: a substring hit would corrupt ordinary
+        # diagnostic JSON wholesale (PR #479 review).
+        text = '{"tokenizer": "cl100k_base", "secretary": "Jane Doe"}'
+        assert redact(text) == text
+
+    def test_separated_compound_names_still_match(self):
+        for field in ("auth_token", "user.password", "api-key", "client_secret"):
+            result = redact('{"' + field + '": "hunter2value"}')
+            assert "[REDACTED_JSON_SECRET]" in result, field
+            assert "hunter2value" not in result, field
+
+    def test_escaped_quote_does_not_end_the_value_early(self):
+        # An escaped quote inside the value must be consumed atomically;
+        # ending the match there would leak the credential's tail at every
+        # logging boundary (PR #479 review, P1).
+        result = redact('{"password": "abc\\"SECRETTAIL"}')
+        assert "[REDACTED_JSON_SECRET]" in result
+        assert "SECRETTAIL" not in result
+
 
 class TestRedactTelegramSentry:
     @pytest.mark.ac("ADR-064/AC-42")
@@ -528,6 +549,7 @@ class TestRedactScaling:
             ("digit run with colon", lambda n: "1" * n + ":AA"),
             ("hex run", lambda n: "a1" * (n // 2)),
             ("json field spam", lambda n: '"token": "' * (n // 10)),
+            ("json escaped value never closing", lambda n: '"password": "' + '\\"' * (n // 2)),
         ],
     )
     def test_cost_grows_linearly_with_input(self, label, build):

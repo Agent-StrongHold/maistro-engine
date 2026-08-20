@@ -53,7 +53,14 @@ carries a non-empty `reason` — a **correction** of a status that was claimed
 and turned out false, as SPEC-183's `Implemented` was with two of its four
 phases missing. The reason is mandatory so a silent downgrade still fails
 lint: going backwards costs a sentence, on the entry itself, where it survives
-later transitions.
+later transitions. Backwards means exactly that — the earlier status must be
+forward-reachable from the corrected one. A reason does not legalise any
+other invalid hop (terminal-to-terminal moves, duplicate entries): those are
+new claims the machine rejects, not corrections.
+
+A spec's `Deprecated` history entry must itself carry a non-empty `reason`,
+even though the transition is forward: deprecation withdraws a contract, and
+a withdrawal that does not say why is indistinguishable from a mistake.
 
 Every status transition is recorded with a date in the `history` frontmatter field.
 

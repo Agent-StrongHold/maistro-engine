@@ -125,14 +125,20 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # fixed strings, no backreferences, and AC-12..14 require the label
     # present and the value gone, not the key preserved. Overlap with an
     # inner pattern firing inside the value (an sk- key, AC-31) resolves to
-    # this span: it starts earlier and is longer. Bare "key"/"auth" are NOT
-    # in the alternation — "monkey", "author" would false-positive; the
-    # compound forms are spelled out instead.
+    # this span: it starts earlier and is longer.
+    #
+    # A sensitive term counts only as a whole `_`/`-`/`.`-separated segment of
+    # the field name: "auth_token" and "user.password" match, "tokenizer" and
+    # "secretary" do not — a substring hit would corrupt ordinary diagnostic
+    # JSON wholesale. Bare "key"/"auth" are NOT in the alternation ("monkey",
+    # "author"); the compound forms are spelled out instead. The value consumes
+    # JSON escape sequences atomically so an escaped quote cannot end the match
+    # early and leak the tail of the credential.
     (
         re.compile(
-            r'"[A-Za-z0-9_.-]{0,64}(?:password|passwd|pwd|secret|token|credential'
-            r'|api[_-]?key|apikey|access[_-]?key|private[_-]?key)[A-Za-z0-9_.-]{0,64}"'
-            r'\s*:\s*"[^"]{0,4096}"',
+            r'"(?:[A-Za-z0-9._-]{0,64}[_.-])?(?:password|passwd|pwd|secret|token|credential'
+            r'|api[_-]?key|apikey|access[_-]?key|private[_-]?key)(?:[_.-][A-Za-z0-9._-]{0,64})?"'
+            r'\s*:\s*"(?:[^"\\]|\\.){0,4096}"',
             re.IGNORECASE,
         ),
         "[REDACTED_JSON_SECRET]",

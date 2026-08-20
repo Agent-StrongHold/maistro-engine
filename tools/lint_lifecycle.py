@@ -200,7 +200,7 @@ def lint_file(path: Path) -> list[str]:
         )
 
     # 4. History validation
-    errors.extend(lint_history(path, fm, status, valid_statuses, transitions))
+    errors.extend(lint_history(path, fm, status, valid_statuses, transitions, kind))
 
     return errors
 
@@ -224,6 +224,7 @@ def lint_history(
     status: str,
     valid_statuses: list[str],
     transitions: dict[str, set[str]],
+    kind: str = "",
 ) -> list[str]:
     errors: list[str] = []
     history = fm.get("history")
@@ -236,22 +237,37 @@ def lint_history(
         if cur not in valid_statuses:
             errors.append(f"{path}: history contains invalid status '{cur}'")
             break
+        has_reason = bool(str(entry.get("reason") or "").strip())
         # Forward-only: cur must be reachable from prev via transitive closure.
         # One exception: an entry carrying a non-empty `reason` may move
-        # backwards. That is a *correction* — a status that was claimed and
-        # turned out false (SPEC-183 claimed Implemented with two of its four
-        # phases missing) — and the history must be able to record it, because
-        # the alternative observed in practice was documents whose ledger
-        # simply stopped matching reality. The reason is mandatory precisely so
-        # a silent downgrade still fails: going backwards costs a sentence.
-        if (
-            prev
-            and cur not in reachable_from(prev, transitions)
-            and not str(entry.get("reason") or "").strip()
-        ):
+        # *backwards* — `prev` must be forward-reachable from `cur`, i.e. cur
+        # is genuinely an earlier state on some path. That is a *correction* —
+        # a status that was claimed and turned out false (SPEC-183 claimed
+        # Implemented with two of its four phases missing) — and the history
+        # must be able to record it, because the alternative observed in
+        # practice was documents whose ledger simply stopped matching reality.
+        # The reason is mandatory precisely so a silent downgrade still fails:
+        # going backwards costs a sentence. A reason does NOT legalise any
+        # other invalid hop (Deprecated → Superseded, Implemented →
+        # Implemented): those are not corrections, they are new claims the
+        # machine rejects.
+        if prev and cur not in reachable_from(prev, transitions):
+            is_backwards = prev in reachable_from(cur, transitions)
+            if not is_backwards:
+                errors.append(f"{path}: invalid transition '{prev}' → '{cur}' in history")
+            elif not has_reason:
+                errors.append(
+                    f"{path}: invalid transition '{prev}' → '{cur}' in history "
+                    f"(a backwards correction requires a `reason` on the entry)"
+                )
+        # A spec's Deprecated entry withdraws a contract; ADR-097 requires the
+        # withdrawal to say why on the entry itself. Checked here rather than
+        # in the required-fields table because that table sees only top-level
+        # fields, and the rationale belongs to the transition, not the document.
+        if kind == "spec" and cur == "Deprecated" and not has_reason:
             errors.append(
-                f"{path}: invalid transition '{prev}' → '{cur}' in history "
-                f"(a backwards correction requires a `reason` on the entry)"
+                f"{path}: 'Deprecated' history entry requires a non-empty `reason` "
+                f"(a contract withdrawal must say why)"
             )
         prev = cur
 
@@ -268,20 +284,42 @@ def lint_history(
 # ── AC traceability ────────────────────────────────────────────────────────
 
 AC_ID_RE = re.compile(r"\*\*AC-(\d+)\*\*")
+GHERKIN_FENCE_RE = re.compile(r"```gherkin\n(.*?)```", re.DOTALL)
+AC_TAG_RE = re.compile(r"@AC-(\d+)\b")
 MARKER_RE = re.compile(r'@pytest\.mark\.ac\(["\']([^"\']+)["\']\)')
 PARAM_RE = re.compile(r'pytest\.mark\.ac\(["\']([^"\']+)["\']\)')
 
 
 def extract_ac_ids(path: Path) -> list[str]:
-    """Extract AC-N IDs from a spec's Acceptance Criteria section."""
-    section = _ac_section(path.read_text(encoding="utf-8"))
-    if section is None:
-        return []
+    """Extract AC-N IDs from a spec: bold ids in the AC section, plus `@AC-N`
+    tags inside ```gherkin fences anywhere in the document.
+
+    The Gherkin pass exists because `has_acceptance_criteria` accepts
+    fence-only documents (SPEC-160 has no AC heading at all) — accepting a
+    document's criteria while extracting none of them would exempt exactly
+    those documents from traceability: deleting every one of their test
+    markers would raise no error.
+    """
+    text = path.read_text(encoding="utf-8")
     fm = parse_frontmatter(path)
     spec_id = fm.get("id", "") if fm else ""
-    ids = []
-    for m in AC_ID_RE.finditer(section):
-        ids.append(f"{spec_id}/AC-{m.group(1)}")
+    ids: list[str] = []
+    seen: set[str] = set()
+
+    section = _ac_section(text)
+    sources = [section] if section is not None else []
+    sources.extend(m.group(1) for m in GHERKIN_FENCE_RE.finditer(text))
+    for source in sources:
+        for m in AC_ID_RE.finditer(source):
+            ac = f"{spec_id}/AC-{m.group(1)}"
+            if ac not in seen:
+                seen.add(ac)
+                ids.append(ac)
+        for m in AC_TAG_RE.finditer(source):
+            ac = f"{spec_id}/AC-{m.group(1)}"
+            if ac not in seen:
+                seen.add(ac)
+                ids.append(ac)
     return ids
 
 

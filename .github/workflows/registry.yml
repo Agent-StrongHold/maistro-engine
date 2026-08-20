@@ -17,6 +17,12 @@ on:
       - 'quality/lifecycle-baseline.json'
       - 'pyproject.toml'
       - '.github/workflows/registry.yml'
+      # The AC-traceability gate reads @pytest.mark.ac markers out of every
+      # test root, so a PR that only deletes or renames a marker must still
+      # trigger this workflow — without these paths the gate advertised
+      # traceability it could not enforce (PR #479 review).
+      - 'packages/**/tests/**'
+      - 'tests/**'
   push:
     branches:
       - main

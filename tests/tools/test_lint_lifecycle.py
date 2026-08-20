@@ -132,6 +132,32 @@ def test_whitespace_reason_does_not_unlock_backwards(lint, tmp_path):
     assert any("backwards correction requires a `reason`" in e for e in errors)
 
 
+def test_reason_does_not_excuse_forward_invalid_transitions(lint, tmp_path):
+    """A reason legalises only genuinely backwards hops — not terminal-to-
+    terminal moves or duplicates the transition tables reject."""
+    history = (
+        "history:\n"
+        "  - status: Superseded\n"
+        "  - status: Deprecated\n"
+        "    reason: not a correction, just an invalid hop\n"
+    )
+    path = _write_spec(tmp_path, status="Deprecated", history=history)
+    errors = lint.lint_file(path)
+    assert any("invalid transition 'Superseded' → 'Deprecated'" in e for e in errors)
+
+
+def test_reason_does_not_excuse_duplicate_entries(lint, tmp_path):
+    history = (
+        "history:\n"
+        "  - status: Implemented\n"
+        "  - status: Implemented\n"
+        "    reason: still implemented\n"
+    )
+    path = _write_spec(tmp_path, status="Implemented", history=history, tests_field="tests: [x.py]")
+    errors = lint.lint_file(path)
+    assert any("invalid transition 'Implemented' → 'Implemented'" in e for e in errors)
+
+
 # ── Gherkin fences count as acceptance criteria ─────────────────────────────
 
 
@@ -154,9 +180,45 @@ def test_no_criteria_anywhere_still_fails(lint, tmp_path):
 
 
 def test_spec_deprecated_reachable_from_deferred(lint, tmp_path):
-    history = "history:\n  - status: Deferred\n  - status: Deprecated\n"
+    history = (
+        "history:\n"
+        "  - status: Deferred\n"
+        "  - status: Deprecated\n"
+        "    reason: subject deleted from the codebase while deferred\n"
+    )
     path = _write_spec(tmp_path, status="Deprecated", history=history)
     assert lint.lint_file(path) == []
+
+
+def test_spec_deprecated_entry_requires_reason(lint, tmp_path):
+    """A contract withdrawal must say why — even on a forward transition."""
+    history = "history:\n  - status: Deferred\n  - status: Deprecated\n"
+    path = _write_spec(tmp_path, status="Deprecated", history=history)
+    errors = lint.lint_file(path)
+    assert any("'Deprecated' history entry requires a non-empty `reason`" in e for e in errors)
+
+
+# ── Gherkin-only criteria still reach traceability ──────────────────────────
+
+
+def test_extract_ac_ids_reads_gherkin_tags_without_heading(lint, tmp_path):
+    """SPEC-160's shape: fence-only criteria, no AC heading. Accepting the
+    document while extracting no ids would exempt it from traceability."""
+    body = (
+        "# Fixture\n\n```gherkin\n@AC-1\nScenario: a\n  Then a\n\n"
+        "@AC-2\nScenario: b\n  Then b\n```\n"
+    )
+    path = _write_spec(tmp_path, status="Implemented", tests_field="tests: [x.py]", body=body)
+    assert lint.extract_ac_ids(path) == ["SPEC-999/AC-1", "SPEC-999/AC-2"]
+
+
+def test_extract_ac_ids_dedupes_heading_and_gherkin_forms(lint, tmp_path):
+    body = (
+        "## Acceptance Criteria\n\n- **AC-1** stated in bold\n\n"
+        "```gherkin\n@AC-1\nScenario: same criterion restated\n  Then a\n```\n"
+    )
+    path = _write_spec(tmp_path, status="Implemented", tests_field="tests: [x.py]", body=body)
+    assert lint.extract_ac_ids(path) == ["SPEC-999/AC-1"]
 
 
 def test_vestigial_statuses_rejected(lint, tmp_path):
