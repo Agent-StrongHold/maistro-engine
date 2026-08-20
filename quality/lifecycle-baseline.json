@@ -1,0 +1,6 @@
+{
+  "_comment": "Lifecycle violations accepted as the current state of the world, keyed by tools/lint_lifecycle.py's exact error string. The linter ratchets against this file in both directions: a violation not listed here fails CI, and a listed violation that no longer occurs ALSO fails CI until it is pruned -- the list can only shrink, and a stale entry left behind would silently absorb a later regression with the same identity. Every entry carries its rationale as the value.",
+  "violations": {
+    "docs/specs/SPEC-062826-8982-exploratory-testing-program.md: status 'Implemented' requires field 'tests'": "Procedural spec: its deliverable is a session-log template and a BACKLOG escalation path, not code. There is no executable test surface for `tests:` to point at -- the filled-in session logs are the evidence of implementation."
+  }
+}
