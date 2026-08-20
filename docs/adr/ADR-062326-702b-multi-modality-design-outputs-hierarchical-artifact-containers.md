@@ -28,6 +28,14 @@ source:
   - packages/maistro-design/src/maistro_design/engine.py
   - packages/maistro-design/src/maistro_design/protocols.py
   - packages/maistro-canvas/src/maistro_canvas/protocols.py
+ac-modules:
+  AC-1: maistro_design.engine
+  AC-2: maistro_design.engine
+  AC-3: maistro_design.engine
+  AC-4: maistro_design.scan
+  AC-5: maistro_design.engine
+  AC-6: maistro_design.engine
+  AC-7: maistro_design.engine
 layer: Ability
 owners:
   - '@BlakeMatthews-dev'
@@ -151,6 +159,7 @@ processing (store, serve, convert formats, etc.).
 ## Acceptance criteria
 
 ```gherkin
+@AC-1
 Scenario: Single-file output is a file artifact
   Given a skill with mode=PROTOTYPE, output_formats=[HTML]
   When generate() is called
@@ -163,17 +172,20 @@ Scenario: Single-file output is a file artifact
   # output_formats only constrains what a caller may later assemble via
   # build_multimodal_output() once it has real per-format content.
 
+@AC-2
 Scenario: Multi-file landing page (HTML+CSS+JS)
   Given a caller has already produced separate HTML/CSS/JS content (e.g. from per-format LLM calls downstream of generate())
   When build_multimodal_output({HTML: html_text, CSS: css_text, JS: js_text}, trust_tier=tier) is called
   Then output.root.kind == "container"
   And output.root.children contains "html", "css", "js", each kind="file"
 
+@AC-3
 Scenario: PNG output is a blob
   Given a caller has already produced PNG bytes (e.g. from an ImageGenClient call downstream of generate())
   When build_multimodal_output({PNG: png_bytes}, trust_tier=tier) is called
   Then output.root.kind == "blob", format=PNG, value is bytes
 
+@AC-4
 Scenario: SVG with nested typography hierarchy (caller-assembled)
   Given a caller hand-builds an ArtifactNode tree with a nested "typography" container (e.g. from per-section TypographyRenderer output)
   When the caller scans it via scan_design_output() before persisting
@@ -183,16 +195,19 @@ Scenario: SVG with nested typography hierarchy (caller-assembled)
   # nesting (format -> leaf); deeper hand-built hierarchies remain a caller
   # concern, consistent with "Out of scope" below.
 
+@AC-5
 Scenario: Warden scan detects <script> injection in HTML output
   Given output containing "<script>alert(1)</script>"
   When output is scanned before return
   Then TrustBannedError is raised
 
+@AC-6
 Scenario: SkillModeError if HTML renderer unavailable
   Given a skill requiring HTMLRenderer (mode=TEMPLATE)
   When DesignEngine is constructed without an HTMLRenderer
   Then generate() raises SkillModeError
 
+@AC-7
 Scenario: Blob artifact is persisted via CanvasStore
   Given a DesignOutput containing one or more BLOB-kind leaves
   When persist_blobs(output, canvas_store) is called

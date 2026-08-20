@@ -389,6 +389,7 @@ class TestArtifactNode:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("ADR-062326-702b/AC-4")
     def test_walk_yields_dotted_addresses_for_every_leaf(self):
         from maistro_design.types import ArtifactKind, ArtifactNode, OutputFormat
 
@@ -931,6 +932,7 @@ class TestDesignEngineGenerate:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("integration")
+    @pytest.mark.ac("ADR-062326-702b/AC-6")
     async def test_generate_raises_skill_mode_error_for_missing_renderer(
         self, skill_registry, system_registry
     ):
@@ -1079,6 +1081,7 @@ class TestDesignEngineGenerate:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("integration")
+    @pytest.mark.ac("ADR-062326-702b/AC-5")
     async def test_generate_scans_assembled_output_for_script_injection(
         self, skill_registry, system_registry
     ):
@@ -1160,6 +1163,7 @@ class TestBuildMultimodalOutput:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("ADR-062326-702b/AC-3")
     def test_single_bytes_content_produces_blob_root(self):
         """
         Given a single {PNG: b"\\x89PNG"} content entry
@@ -1218,6 +1222,7 @@ class TestBuildMultimodalOutput:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("ADR-062326-702b/AC-5")
     def test_script_injection_raises_trust_banned_error(self):
         """
         Given a format whose content contains a <script> tag
@@ -1273,6 +1278,7 @@ class TestBuildMultimodalOutput:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("integration")
+    @pytest.mark.ac("ADR-062326-702b/AC-7")
     async def test_persist_blobs_calls_store_blob_for_each_blob_leaf(self):
         """
         Given a multi-format output with one PNG blob entry

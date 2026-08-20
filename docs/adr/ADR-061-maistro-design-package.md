@@ -20,6 +20,14 @@ contracts:
   - boundary
   - behavioral
 tests: []
+ac-modules:
+  AC-1: maistro_design.trust
+  AC-2: maistro_design.trust
+  AC-3: maistro_design.skills.registry
+  AC-4: maistro_design.engine
+  AC-5: maistro_design.engine
+  AC-6: maistro_design.engine
+  AC-7: maistro_design.nodes
 layer: Ability
 owners:
   - '@BlakeMatthews-dev'
@@ -89,37 +97,44 @@ similar content. Each upgrade teaches Warden what clears the bar.
 ## Acceptance criteria
 
 ```gherkin
+@AC-1
 Scenario: TrustTier.min() is monotonically decreasing
   Given TrustTier.T0
   When min(T2) is applied then min(T0) is applied
   Then result is T2
 
+@AC-2
 Scenario: skull is always the lowest tier
   Given any TrustTier value
   When min(SKULL) is applied
   Then result is SKULL
 
+@AC-3
 Scenario: t0 built-in skill cannot be overwritten by t2 install
   Given a registry containing "login-flow" at trust_tier=T0
   When DesignSkill(slug="login-flow", trust_tier=T2) is registered
   Then registry still holds the original T0 skill
 
+@AC-4
 Scenario: Discovery response contaminates engine context to t3
   Given a DesignEngine with context_trust_tier=T0
   When generate() is called with a DiscoveryResult (trust_tier=T3)
   Then engine.context_trust_tier == T3
   And DesignProject.trust_tier == T3
 
+@AC-5
 Scenario: Warden-blocked content raises TrustBannedError
   Given a banish list containing pattern "rm -rf"
   When a discovery response containing "rm -rf" is submitted
   Then TrustBannedError is raised
 
+@AC-6
 Scenario: Image-mode skill without image_gen raises SkillModeError
   Given a DesignEngine with image_gen=None
   When generate() is called for a skill with mode=IMAGE
   Then SkillModeError is raised
 
+@AC-7
 Scenario: DesignOrchestrateNode is registered in the DAG registry
   When the maistro_design.nodes module is imported
   Then "design.orchestrate" is present in the node registry

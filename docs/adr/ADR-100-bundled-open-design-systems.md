@@ -23,6 +23,13 @@ source:
   - packages/maistro-design/src/maistro_design/systems/bundled/
   - packages/maistro-design/src/maistro_design/systems/catalog/
   - packages/maistro-design/THIRD_PARTY_NOTICES.md
+ac-modules:
+  AC-1: maistro_design.systems.importer
+  AC-2: maistro_design.nodes
+  AC-3: maistro_design.systems.importer
+  AC-4: maistro_design.systems.importer
+  AC-5: maistro_design.systems.importer
+  AC-6: maistro_design.systems.importer
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
@@ -93,32 +100,38 @@ unchanged for its existing flat-manifest callers.
 ## Acceptance criteria
 
 ```gherkin
+@AC-1
 Scenario: load_bundled registers all Tier-1 slugs at T1
   Given an empty DesignSystemRegistry
   When load_bundled(registry) is called
   Then registry.get(slug) is not None for every slug in BUNDLED_SLUGS
   And each has trust_tier == T1, non-empty design_md and tokens_css
 
+@AC-2
 Scenario: "default" is resolvable by DesignOrchestrateNode
   Given DesignOrchestrateNode._execute with design_system_slug="default" (the field default)
   When the node runs
   Then it returns a result for design_system_slug == "default" (no DesignSystemNotFoundError)
 
+@AC-3
 Scenario: one-click catalog import registers at T2
   Given a slug present in catalog.json with scan_status == "clean"
   When import_from_catalog(slug, registry) is called
   Then registry.get(slug) is not None and trust_tier == T2
 
+@AC-4
 Scenario: catalog import re-scan blocks banished content
   Given a banish list containing a pattern present in a catalog system's files
   When import_from_catalog(slug, registry, banish_list=banish_list) is called
   Then TrustBannedError is raised and the system is not registered
 
+@AC-5
 Scenario: scan flags injection content as not passed
   Given file content containing "<script>" or "ignore previous instructions"
   When scan_design_system_content(files) is called
   Then report.passed is False and the matched pattern appears in blocking_flags
 
+@AC-6
 Scenario: every catalog entry is Apache-2.0 and clean
   Given catalog.json
   Then every entry has license == "Apache-2.0" and scan_status == "clean"

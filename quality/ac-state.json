@@ -11,18 +11,18 @@
   "totals": {
     "specs": 174,
     "specs_with_ac_heading": 166,
-    "specs_with_ac_ids": 26,
-    "specs_awaiting_retrofit": 141,
-    "criteria_declared": 401,
-    "criteria_annotated": 176,
-    "markers_found": 164,
+    "specs_with_ac_ids": 28,
+    "specs_awaiting_retrofit": 139,
+    "criteria_declared": 462,
+    "criteria_annotated": 191,
+    "markers_found": 169,
     "markers_without_criterion": 2,
     "criteria_claimed_but_unproven": 0,
-    "gherkin_criteria": 197,
-    "scenarios_without_ac_tag": 64,
+    "gherkin_criteria": 215,
+    "scenarios_without_ac_tag": 0,
     "gherkin_parse_errors": 0,
-    "completion_claims_contradicted": 6,
-    "completion_claims_unverifiable": 71
+    "completion_claims_contradicted": 9,
+    "completion_claims_unverifiable": 68
   },
   "markers_without_criterion": [
     "ADR-070126-6386/persist",
@@ -30,6 +30,13 @@
   ],
   "criteria_claimed_but_unproven": [],
   "completion_claims_contradicted": [
+    {
+      "id": "SPEC-062326-e9c6",
+      "kind": "spec",
+      "declared_status": "Implemented",
+      "measured_tier": "declared",
+      "file": "docs/specs/SPEC-062326-e9c6-design-skills-react-tsx-output-format.md"
+    },
     {
       "id": "SPEC-070226-2b70",
       "kind": "spec",
@@ -69,8 +76,22 @@
       "id": "ADR-061",
       "kind": "adr",
       "declared_status": "Implemented",
-      "measured_tier": "passing",
+      "measured_tier": "declared",
       "file": "docs/adr/ADR-061-maistro-design-package.md"
+    },
+    {
+      "id": "ADR-062326-616c",
+      "kind": "adr",
+      "declared_status": "Implemented",
+      "measured_tier": "declared",
+      "file": "docs/adr/ADR-062326-616c-design-skills-code-export-capability.md"
+    },
+    {
+      "id": "ADR-062326-702b",
+      "kind": "adr",
+      "declared_status": "Implemented",
+      "measured_tier": "declared",
+      "file": "docs/adr/ADR-062326-702b-multi-modality-design-outputs-hierarchical-artifact-containers.md"
     }
   ],
   "completion_claims_unverifiable": [
@@ -115,13 +136,6 @@
       "declared_status": "Implemented",
       "measured_tier": "none",
       "file": "docs/specs/SPEC-062326-7dcb-artifact-node-hierarchy-and-output-scanning.md"
-    },
-    {
-      "id": "SPEC-062326-e9c6",
-      "kind": "spec",
-      "declared_status": "Implemented",
-      "measured_tier": "none",
-      "file": "docs/specs/SPEC-062326-e9c6-design-skills-react-tsx-output-format.md"
     },
     {
       "id": "SPEC-062826-1924",
@@ -507,20 +521,6 @@
       "declared_status": "Implemented",
       "measured_tier": "unmeasured",
       "file": "docs/adr/ADR-057-memory-exposure-mode.md"
-    },
-    {
-      "id": "ADR-062326-616c",
-      "kind": "adr",
-      "declared_status": "Implemented",
-      "measured_tier": "unmeasured",
-      "file": "docs/adr/ADR-062326-616c-design-skills-code-export-capability.md"
-    },
-    {
-      "id": "ADR-062326-702b",
-      "kind": "adr",
-      "declared_status": "Implemented",
-      "measured_tier": "unmeasured",
-      "file": "docs/adr/ADR-062326-702b-multi-modality-design-outputs-hierarchical-artifact-containers.md"
     },
     {
       "id": "ADR-067",
@@ -1273,32 +1273,152 @@
         "- maistro-engine#ADR-062326-616c"
       ],
       "has_ac_heading": true,
-      "criteria_total": 0,
-      "annotated": 0,
-      "gherkin_criteria": 0,
+      "criteria_total": 12,
+      "annotated": 12,
+      "gherkin_criteria": 12,
       "gherkin_parse_errors": [],
-      "scenarios_without_ac_tag": [
-        "REACT_TSX value exists in OutputFormat",
-        "login-flow declares HTML and REACT_TSX output",
-        "agent-browser declares HTML and REACT_TSX output",
-        "landing-page declares HTML, CSS, and REACT_TSX output",
-        "email-template declares HTML and REACT_TSX output",
-        "Prototype skills include \"Code Output Instructions\" in system_prompt",
-        "Template skills include \"Code Output Instructions\" in system_prompt",
-        "REACT_TSX output inherits project trust tier",
-        "Code output does not auto-upgrade trust",
-        "PROTOTYPE mode does not auto-create canvas",
-        "TEMPLATE mode with code output still does not auto-create canvas",
-        "IMAGE mode still auto-creates canvas (existing behavior unchanged)"
-      ],
+      "scenarios_without_ac_tag": [],
       "distribution": {
-        "declared": 0,
+        "declared": 12,
         "covered": 0,
         "passing": 0,
         "reachable": 0
       },
-      "tier": "none",
-      "criteria": []
+      "tier": "declared",
+      "criteria": [
+        {
+          "id": "SPEC-062326-e9c6/AC-1",
+          "claimed": false,
+          "module": "maistro_design.types",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "REACT_TSX value exists in OutputFormat"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-062326-e9c6/AC-2",
+          "claimed": false,
+          "module": "maistro_design.skills.builtins",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "login-flow declares HTML and REACT_TSX output"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-062326-e9c6/AC-3",
+          "claimed": false,
+          "module": "maistro_design.skills.builtins",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "agent-browser declares HTML and REACT_TSX output"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-062326-e9c6/AC-4",
+          "claimed": false,
+          "module": "maistro_design.skills.builtins",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "landing-page declares HTML, CSS, and REACT_TSX output"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-062326-e9c6/AC-5",
+          "claimed": false,
+          "module": "maistro_design.skills.builtins",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "email-template declares HTML and REACT_TSX output"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-062326-e9c6/AC-6",
+          "claimed": false,
+          "module": "maistro_design.skills.builtins",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Prototype skills include \"Code Output Instructions\" in system_prompt"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-062326-e9c6/AC-7",
+          "claimed": false,
+          "module": "maistro_design.skills.builtins",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Template skills include \"Code Output Instructions\" in system_prompt"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-062326-e9c6/AC-8",
+          "claimed": false,
+          "module": "maistro_design.engine",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "REACT_TSX output inherits project trust tier"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-062326-e9c6/AC-9",
+          "claimed": false,
+          "module": "maistro_design.engine",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Code output does not auto-upgrade trust"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-062326-e9c6/AC-10",
+          "claimed": false,
+          "module": "maistro_design.engine",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "PROTOTYPE mode does not auto-create canvas"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-062326-e9c6/AC-11",
+          "claimed": false,
+          "module": "maistro_design.engine",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "TEMPLATE mode with code output still does not auto-create canvas"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-062326-e9c6/AC-12",
+          "claimed": false,
+          "module": "maistro_design.engine",
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "IMAGE mode still auto-creates canvas (existing behavior unchanged)"
+          ],
+          "rung": "declared"
+        }
+      ]
     },
     {
       "id": "SPEC-062826-1924",
@@ -4728,52 +4848,54 @@
       "implements": [],
       "has_ac_heading": true,
       "criteria_total": 3,
-      "annotated": 0,
-      "gherkin_criteria": 0,
+      "annotated": 3,
+      "gherkin_criteria": 3,
       "gherkin_parse_errors": [],
-      "scenarios_without_ac_tag": [
-        "Webhook disabled by default",
-        "Webhook emits compatible JSON when enabled",
-        "Webhook failure does not fail the task"
-      ],
+      "scenarios_without_ac_tag": [],
       "distribution": {
         "declared": 1,
         "covered": 0,
-        "passing": 2,
-        "reachable": 0
+        "passing": 0,
+        "reachable": 2
       },
       "tier": "declared",
       "criteria": [
         {
           "id": "SPEC-175/AC-1",
           "claimed": false,
-          "module": null,
+          "module": "maistro.tasks.runner",
           "covered_by": [],
-          "form": "bullet",
-          "scenario": null,
+          "form": "gherkin",
+          "scenario": [
+            "Webhook disabled by default"
+          ],
           "rung": "declared"
         },
         {
           "id": "SPEC-175/AC-2",
           "claimed": false,
-          "module": null,
+          "module": "maistro.tasks.progress_webhook",
           "covered_by": [
             "packages/maistro-core/tests/tasks/test_progress_webhook.py"
           ],
-          "form": "bullet",
-          "scenario": null,
-          "rung": "passing"
+          "form": "gherkin",
+          "scenario": [
+            "Webhook emits compatible JSON when enabled"
+          ],
+          "rung": "reachable"
         },
         {
           "id": "SPEC-175/AC-3",
           "claimed": false,
-          "module": null,
+          "module": "maistro.tasks.progress_webhook",
           "covered_by": [
             "packages/maistro-core/tests/tasks/test_progress_webhook.py"
           ],
-          "form": "bullet",
-          "scenario": null,
-          "rung": "passing"
+          "form": "gherkin",
+          "scenario": [
+            "Webhook failure does not fail the task"
+          ],
+          "rung": "reachable"
         }
       ]
     },
@@ -4930,23 +5052,53 @@
       "declared_status": "Deferred",
       "implements": [],
       "has_ac_heading": true,
-      "criteria_total": 0,
+      "criteria_total": 3,
       "annotated": 0,
-      "gherkin_criteria": 0,
+      "gherkin_criteria": 3,
       "gherkin_parse_errors": [],
-      "scenarios_without_ac_tag": [
-        "User connects with manual host and port",
-        "User selects discovered gateway on LAN",
-        "Send and receive on main session"
-      ],
+      "scenarios_without_ac_tag": [],
       "distribution": {
-        "declared": 0,
+        "declared": 3,
         "covered": 0,
         "passing": 0,
         "reachable": 0
       },
-      "tier": "none",
-      "criteria": []
+      "tier": "declared",
+      "criteria": [
+        {
+          "id": "SPEC-179/AC-1",
+          "claimed": false,
+          "module": null,
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "User connects with manual host and port"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-179/AC-2",
+          "claimed": false,
+          "module": null,
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "User selects discovered gateway on LAN"
+          ],
+          "rung": "declared"
+        },
+        {
+          "id": "SPEC-179/AC-3",
+          "claimed": false,
+          "module": null,
+          "covered_by": [],
+          "form": "gherkin",
+          "scenario": [
+            "Send and receive on main session"
+          ],
+          "rung": "declared"
+        }
+      ]
     },
     {
       "id": "SPEC-180",
@@ -8379,19 +8531,54 @@
         "SPEC-160"
       ],
       "measurable_specs": 1,
-      "own_criteria": 0,
-      "own_detail": [],
-      "scenarios_without_ac_tag": [
-        "TrustTier.min() is monotonically decreasing",
-        "skull is always the lowest tier",
-        "t0 built-in skill cannot be overwritten by t2 install",
-        "Discovery response contaminates engine context to t3",
-        "Warden-blocked content raises TrustBannedError",
-        "Image-mode skill without image_gen raises SkillModeError",
-        "DesignOrchestrateNode is registered in the DAG registry"
+      "own_criteria": 7,
+      "own_detail": [
+        {
+          "id": "ADR-061/AC-1",
+          "module": "maistro_design.trust",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-061/AC-2",
+          "module": "maistro_design.trust",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-061/AC-3",
+          "module": "maistro_design.skills.registry",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-061/AC-4",
+          "module": "maistro_design.engine",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-061/AC-5",
+          "module": "maistro_design.engine",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-061/AC-6",
+          "module": "maistro_design.engine",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-061/AC-7",
+          "module": "maistro_design.nodes",
+          "covered_by": [],
+          "rung": "declared"
+        }
       ],
+      "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "passing"
+      "tier": "declared"
     },
     {
       "id": "ADR-061526-f383",
@@ -8450,12 +8637,12 @@
       "specs": [
         "SPEC-062326-e9c6"
       ],
-      "measurable_specs": 0,
+      "measurable_specs": 1,
       "own_criteria": 0,
       "own_detail": [],
       "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "declared"
     },
     {
       "id": "ADR-062326-702b",
@@ -8465,19 +8652,65 @@
         "SPEC-062326-7dcb"
       ],
       "measurable_specs": 0,
-      "own_criteria": 0,
-      "own_detail": [],
-      "scenarios_without_ac_tag": [
-        "Single-file output is a file artifact",
-        "Multi-file landing page (HTML+CSS+JS)",
-        "PNG output is a blob",
-        "SVG with nested typography hierarchy (caller-assembled)",
-        "Warden scan detects <script> injection in HTML output",
-        "SkillModeError if HTML renderer unavailable",
-        "Blob artifact is persisted via CanvasStore"
+      "own_criteria": 7,
+      "own_detail": [
+        {
+          "id": "ADR-062326-702b/AC-1",
+          "module": "maistro_design.engine",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-062326-702b/AC-2",
+          "module": "maistro_design.engine",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-062326-702b/AC-3",
+          "module": "maistro_design.engine",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-062326-702b/AC-4",
+          "module": "maistro_design.scan",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py",
+            "packages/maistro-design/tests/test_scan.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-062326-702b/AC-5",
+          "module": "maistro_design.engine",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-062326-702b/AC-6",
+          "module": "maistro_design.engine",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "ADR-062326-702b/AC-7",
+          "module": "maistro_design.engine",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "rung": "reachable"
+        }
       ],
+      "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "declared"
     },
     {
       "id": "ADR-063",
@@ -9110,38 +9343,168 @@
         "SPEC-224"
       ],
       "measurable_specs": 0,
-      "own_criteria": 0,
-      "own_detail": [],
-      "scenarios_without_ac_tag": [
-        "Factory returns a TestEnvironment with all components",
-        "Factory-created container has all in-memory stores",
-        "Factory uses default AgentConfig when none provided",
-        "send_prompt routes through classify-route-respond pipeline",
-        "send_prompt captures the response for later assertion",
-        "Multiple send_prompt calls accumulate responses",
-        "GraphRun events are captured when run_graph is used",
-        "Node-level events are captured in order",
-        "get_events filters by event type",
-        "assert_event_type raises on count mismatch",
-        "Custom FauxProvider with seeded responses is used",
-        "Custom AgentConfig overrides defaults",
-        "Custom agents are registered in the container",
-        "Custom GraphConfig controls node topology",
-        "Harness does not import network libraries",
-        "Tests run without any external service running",
-        "All stores are in-memory implementations",
-        "Data persists only for the lifetime of the environment",
-        "Two environments are fully independent",
-        "Concurrent environments do not share state",
-        "reset clears captured events and responses",
-        "reset allows reuse without reconstruction",
-        "reset does not clear registered agents",
-        "Event filter limits captured event types",
-        "FauxProvider error propagates as graph_failed event",
-        "run_graph returns HyperagentOutput"
+      "own_criteria": 26,
+      "own_detail": [
+        {
+          "id": "ADR-065/AC-1",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-2",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-3",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-4",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-5",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-6",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-7",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-8",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-9",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-10",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-11",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-12",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-13",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-14",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-15",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-16",
+          "module": null,
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-17",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-18",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-19",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-20",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-21",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-22",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-23",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-24",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-25",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-065/AC-26",
+          "module": "maistro.testing.harness",
+          "covered_by": [],
+          "rung": "declared"
+        }
       ],
+      "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "declared"
     },
     {
       "id": "ADR-066",
@@ -10236,18 +10599,48 @@
         "SPEC-234"
       ],
       "measurable_specs": 0,
-      "own_criteria": 0,
-      "own_detail": [],
-      "scenarios_without_ac_tag": [
-        "load_bundled registers all Tier-1 slugs at T1",
-        "\"default\" is resolvable by DesignOrchestrateNode",
-        "one-click catalog import registers at T2",
-        "catalog import re-scan blocks banished content",
-        "scan flags injection content as not passed",
-        "every catalog entry is Apache-2.0 and clean"
+      "own_criteria": 6,
+      "own_detail": [
+        {
+          "id": "ADR-100/AC-1",
+          "module": "maistro_design.systems.importer",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-100/AC-2",
+          "module": "maistro_design.nodes",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-100/AC-3",
+          "module": "maistro_design.systems.importer",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-100/AC-4",
+          "module": "maistro_design.systems.importer",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-100/AC-5",
+          "module": "maistro_design.systems.importer",
+          "covered_by": [],
+          "rung": "declared"
+        },
+        {
+          "id": "ADR-100/AC-6",
+          "module": "maistro_design.systems.importer",
+          "covered_by": [],
+          "rung": "declared"
+        }
       ],
+      "scenarios_without_ac_tag": [],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "declared"
     },
     {
       "id": "ADR-101",
