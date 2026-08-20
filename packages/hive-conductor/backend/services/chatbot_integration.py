@@ -1,6 +1,6 @@
-"""OpsAgent integration — create and manage chatbots via the OpsAgent API.
+"""Chatbot integration — create and manage chatbots via the external Chatbot API.
 
-Exposes OpsAgent as tools the PM chat can use:
+Exposes the Chatbot platform as tools the PM chat can use:
 - Create a new chatbot team
 - Configure its prompt
 - Connect knowledge sources
@@ -16,22 +16,20 @@ from typing import Any
 
 from maistro.http import shared_client
 
-logger = logging.getLogger("hive.opsagent")
+logger = logging.getLogger("hive.chatbot_integration")
 
-OPSAGENT_BASE = os.environ.get("OPSAGENT_URL", "")
+CHATBOT_BASE = os.environ.get("CHATBOT_URL", "")
 
 
 def _headers() -> dict[str, str]:
-    token = os.environ.get("OPSAGENT_TOKEN", os.environ.get("LITELLM_API_KEY", ""))
+    token = os.environ.get("CHATBOT_TOKEN", os.environ.get("LITELLM_API_KEY", ""))
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
 async def create_team(team_id: str) -> dict[str, Any]:
-    """Create a new chatbot team in OpsAgent."""
+    """Create a new chatbot team."""
     async with shared_client(timeout=30.0) as client:
-        r = await client.post(
-            f"{OPSAGENT_BASE}/teams", json={"teamID": team_id}, headers=_headers()
-        )
+        r = await client.post(f"{CHATBOT_BASE}/teams", json={"teamID": team_id}, headers=_headers())
         if r.status_code in (200, 201):
             return {"created": True, "team_id": team_id}
         return {"error": f"Failed to create team: {r.status_code} {r.text[:200]}"}
@@ -41,7 +39,7 @@ async def set_prompt(team_id: str, prompt: str) -> dict[str, Any]:
     """Set/update the chatbot's system prompt."""
     async with shared_client(timeout=30.0) as client:
         r = await client.put(
-            f"{OPSAGENT_BASE}/teams/{team_id}/prompt",
+            f"{CHATBOT_BASE}/teams/{team_id}/prompt",
             json={"content": prompt},
             headers=_headers(),
         )
@@ -53,7 +51,7 @@ async def set_prompt(team_id: str, prompt: str) -> dict[str, Any]:
 async def get_prompt(team_id: str) -> dict[str, Any]:
     """Get the current prompt for a team."""
     async with shared_client(timeout=30.0) as client:
-        r = await client.get(f"{OPSAGENT_BASE}/teams/{team_id}/prompt", headers=_headers())
+        r = await client.get(f"{CHATBOT_BASE}/teams/{team_id}/prompt", headers=_headers())
         if r.status_code == 200:
             return r.json()
         return {"error": f"Failed to get prompt: {r.status_code}"}
@@ -63,7 +61,7 @@ async def list_knowledge_bases(team_id: str = "") -> dict[str, Any]:
     """List available knowledge bases."""
     params = {"team_id": team_id} if team_id else {}
     async with shared_client(timeout=30.0) as client:
-        r = await client.get(f"{OPSAGENT_BASE}/knowledgebases", params=params, headers=_headers())
+        r = await client.get(f"{CHATBOT_BASE}/knowledgebases", params=params, headers=_headers())
         if r.status_code == 200:
             return r.json()
         return {"error": f"Failed to list KBs: {r.status_code}"}
@@ -75,7 +73,7 @@ async def create_knowledge_base(name: str, owner_email: str, team_id: str = "") 
     if team_id:
         body["team_id"] = team_id
     async with shared_client(timeout=30.0) as client:
-        r = await client.post(f"{OPSAGENT_BASE}/knowledgebases", json=body, headers=_headers())
+        r = await client.post(f"{CHATBOT_BASE}/knowledgebases", json=body, headers=_headers())
         if r.status_code == 200:
             return r.json()
         return {"error": f"Failed to create KB: {r.status_code} {r.text[:200]}"}
@@ -85,7 +83,7 @@ async def add_confluence_source(kb_id: str, source_url: str) -> dict[str, Any]:
     """Add a Confluence space as a knowledge source."""
     async with shared_client(timeout=30.0) as client:
         r = await client.post(
-            f"{OPSAGENT_BASE}/knowledgebases/{kb_id}/sources",
+            f"{CHATBOT_BASE}/knowledgebases/{kb_id}/sources",
             json={"source_url": source_url, "source_type": "confluence"},
             headers=_headers(),
         )
@@ -95,7 +93,7 @@ async def add_confluence_source(kb_id: str, source_url: str) -> dict[str, Any]:
 
 
 async def chat(message: str, team_id: str = "", conversation_id: str = "") -> dict[str, Any]:
-    """Send a message to an OpsAgent chatbot and get the response."""
+    """Send a message to a Chatbot team and get the response."""
     body: dict[str, Any] = {"message": message}
     if team_id:
         body["team_id"] = team_id
@@ -104,7 +102,7 @@ async def chat(message: str, team_id: str = "", conversation_id: str = "") -> di
 
     async with shared_client(timeout=60.0) as client:
         # Start job
-        r = await client.post(f"{OPSAGENT_BASE}/chatbot/chat", json=body, headers=_headers())
+        r = await client.post(f"{CHATBOT_BASE}/chatbot/chat", json=body, headers=_headers())
         if r.status_code != 200:
             return {"error": f"Chat failed: {r.status_code} {r.text[:200]}"}
         data = r.json()
@@ -117,7 +115,7 @@ async def chat(message: str, team_id: str = "", conversation_id: str = "") -> di
 
         for _ in range(30):  # max 30 polls x 2s = 60s
             await asyncio.sleep(2)
-            r = await client.get(f"{OPSAGENT_BASE}/chatbot/chat/{job_id}", headers=_headers())
+            r = await client.get(f"{CHATBOT_BASE}/chatbot/chat/{job_id}", headers=_headers())
             if r.status_code != 200:
                 continue
             result = r.json()
@@ -135,9 +133,7 @@ async def chat(message: str, team_id: str = "", conversation_id: str = "") -> di
 async def get_team_config(team_id: str) -> dict[str, Any]:
     """Get full team configuration (model, tools, etc)."""
     async with shared_client(timeout=30.0) as client:
-        r = await client.get(
-            f"{OPSAGENT_BASE}/ops-agent/teams/{team_id}/config", headers=_headers()
-        )
+        r = await client.get(f"{CHATBOT_BASE}/ops-agent/teams/{team_id}/config", headers=_headers())
         if r.status_code == 200:
             return r.json()
         return {"error": f"Failed to get config: {r.status_code}"}
@@ -147,7 +143,7 @@ async def update_team_config(team_id: str, config: dict[str, Any]) -> dict[str, 
     """Update team configuration (model, tools, etc)."""
     async with shared_client(timeout=30.0) as client:
         r = await client.put(
-            f"{OPSAGENT_BASE}/ops-agent/teams/{team_id}/config",
+            f"{CHATBOT_BASE}/ops-agent/teams/{team_id}/config",
             json=config,
             headers=_headers(),
         )

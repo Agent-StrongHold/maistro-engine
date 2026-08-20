@@ -1,7 +1,7 @@
 """PM Fleet enhancements — knowledge distillation, tool config, topK optimization.
 
 Phase 7 additions:
-  - OpsAgent model hill-climb integration
+  - Chatbot model hill-climb integration
   - Knowledge distillation: Opus answers → focused FAQ → Flash Lite serves
   - Jira project key: MAISTRO
   - GitHub/GitLab tool definitions
