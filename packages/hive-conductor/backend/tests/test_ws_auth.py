@@ -151,7 +151,7 @@ def test_same_origin_is_allowed(authed_client: TestClient) -> None:
         pytest.raises(WebSocketDisconnect) as exc,
         authed_client.websocket_connect(
             "/v1/ws/tasks/unknown-task",
-            headers={"Origin": "http://192.168.1.10:8101", "Host": "192.168.1.10:8101"},
+            headers={"Origin": "http://192.0.2.1:8101", "Host": "192.0.2.1:8101"},
         ) as ws,
     ):
         ws.receive_json()

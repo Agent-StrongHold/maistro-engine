@@ -184,8 +184,8 @@ export default function Setup() {
       body: JSON.stringify({ username: userUsername, password: userPassword }),
     });
     if (!r.ok) throw new Error("auto-login failed");
-    // When Hive is served behind the MAISTROgateway at /pm/, redirecting to "/"
-    // dumps the user at the MAISTROcatalog with no obvious way back. Use the
+    // When Hive is served behind the maistro gateway at /pm/, redirecting to "/"
+    // dumps the user at the maistro catalog with no obvious way back. Use the
     // Vite base path so they land on the Fleet page (Hive's PM-mode index
     // auto-redirects /pm/ → /pm/agents).
     window.location.href = import.meta.env.BASE_URL || "/";

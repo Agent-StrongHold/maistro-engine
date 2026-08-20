@@ -19,7 +19,7 @@ def client():
     return LuluClient(
         client_key="test-key",
         client_secret="test-secret",
-        contact_email="test@maincharacter.press",
+        contact_email="test@example.com",
         sandbox=True,
     )
 
