@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 import time
 from typing import Annotated, Any
 
@@ -22,6 +23,13 @@ from maistro.tools.sandbox.workspace import validate_workspace_path
 mcp = FastMCP("git", instructions="Git and GitHub operations")
 
 GIT_CLONE_TIMEOUT = 300
+
+# Schemes legitimate callers actually use (github_create_pr/selfbranch clone
+# over https; ssh/git are kept for parity with normal git usage). Anything
+# else — notably a bare `-`-prefixed string, which `argv` would otherwise
+# hand straight to git as a flag — is rejected before the subprocess runs.
+_ALLOWED_CLONE_SCHEMES = ("https://", "git://", "ssh://")
+_BRANCH_NAME_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 # In-memory dedup for PR creation, keyed by a content hash rather than a
 # model-supplied key — retries with identical args return the original
@@ -110,6 +118,12 @@ async def git_clone(
     url: str, dest: str, timeout: Annotated[int, Field(ge=1, le=900)] = GIT_CLONE_TIMEOUT
 ) -> dict[str, Any]:
     """Clone a git repository (shallow, depth=1)."""
+    if not url.startswith(_ALLOWED_CLONE_SCHEMES):
+        return fail(
+            stdout=f"Blocked: url scheme is not allowed: {url}",
+            error_code="blocked_url_scheme",
+            suggested_action=f"Use a URL starting with one of {_ALLOWED_CLONE_SCHEMES}.",
+        )
     try:
         dest = _validate_git_workspace(dest)
     except ValueError:
@@ -119,6 +133,7 @@ async def git_clone(
             "git",
             "clone",
             "--depth=1",
+            "--",
             url,
             dest,
             stdout=asyncio.subprocess.PIPE,
@@ -203,6 +218,12 @@ async def git_push(
     workspace: str, branch: str | None = None, set_upstream: bool = True
 ) -> dict[str, Any]:
     """Push commits to remote."""
+    if branch is not None and (branch.startswith("-") or not _BRANCH_NAME_RE.match(branch)):
+        return fail(
+            stdout=f"Blocked: invalid branch name: {branch}",
+            error_code="invalid_branch_name",
+            suggested_action="Use a branch name matching [A-Za-z0-9._/-]+ that doesn't start with '-'.",
+        )
     args = ["push"]
     if set_upstream:
         args.extend(["-u", "origin"])

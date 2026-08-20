@@ -26,6 +26,13 @@ from maistro_bootstrap.builders.errors import SandboxEscapeError
 DEFAULT_IMAGE = "maistro-builders:latest"
 _WORKDIR = "/workspace"
 _DEFAULT_TIMEOUT = 120
+# Hardening for the ephemeral container: the agent has a shell inside it, so
+# these are the boundary that actually matters (never trust the untrusted
+# side to self-limit). Values mirror maistro.tools.sandbox.docker's
+# SandboxSettings defaults, sized up since builder runs (installs, test
+# suites) are heavier than a single code-exec call.
+_MEMORY_LIMIT = "2g"
+_PIDS_LIMIT = "512"
 
 
 def _docker(
@@ -65,7 +72,19 @@ class ContainerBuilderSandbox:
 
     def __enter__(self) -> ContainerBuilderSandbox:
         cid = _docker(
-            ["run", "-d", "--workdir", _WORKDIR, self._image, "sleep", "infinity"]
+            [
+                "run",
+                "-d",
+                "--workdir",
+                _WORKDIR,
+                "--cap-drop=ALL",
+                "--security-opt=no-new-privileges",
+                f"--memory={_MEMORY_LIMIT}",
+                f"--pids-limit={_PIDS_LIMIT}",
+                self._image,
+                "sleep",
+                "infinity",
+            ]
         ).stdout.strip()
         self._cid = cid
         # Copy the repo *into* the container (no host bind-mount → isolation).
@@ -80,11 +99,16 @@ class ContainerBuilderSandbox:
     def sync_to_host(self, dest: Path | None = None) -> None:
         """Copy the container workspace back to the host, EXCLUDING ``.git``.
 
-        The agent has shell access inside the container, so a plain ``docker cp``
-        of the whole workspace would let it corrupt refs/config/hooks that the
-        caller then runs host-side git against — defeating the isolation. Stream a
-        tar that excludes ``.git`` so only source edits return; the host worktree
-        keeps its own git metadata.
+        The agent has shell access inside the container (root, in fact), so a
+        plain ``docker cp`` of the whole workspace would let it corrupt
+        refs/config/hooks that the caller then runs host-side git against —
+        defeating the isolation. The container-side ``--exclude`` below is
+        only a courtesy: it runs as root *inside* the untrusted container, so
+        an attacker who controls that container can simply not honor it. The
+        exclude that actually matters is the host-side one, applied while
+        extracting — that's the real trust boundary. ``--no-same-owner`` on
+        the extract also stops the container's root-owned files from landing
+        on the host owned by root.
         """
         target = Path(dest) if dest is not None else self._repo_root
         target.mkdir(parents=True, exist_ok=True)
@@ -109,7 +133,15 @@ class ContainerBuilderSandbox:
                 f"container tar failed: {archive.stderr.decode(errors='replace')[:300]}"
             )
         extract = subprocess.run(
-            ["tar", "xf", "-", "-C", str(target)],
+            [
+                "tar",
+                "xf",
+                "-",
+                "-C",
+                str(target),
+                "--exclude=./.git",
+                "--no-same-owner",
+            ],
             input=archive.stdout,
             capture_output=True,
             timeout=_DEFAULT_TIMEOUT,

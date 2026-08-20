@@ -97,7 +97,9 @@ def test_parse_skill_file_success_path() -> None:
     assert result.auth_key_env == ""
     assert result.system_prompt == "Body text here."
     assert result.source == "local"
-    assert result.trust_tier == "t2"
+    # Trust tier is never self-declared; every freshly parsed skill starts
+    # at the lowest tier regardless of what (absent, here) frontmatter says.
+    assert result.trust_tier == "t3"
 
 
 def test_parse_skill_file_truncates_description_to_500_chars() -> None:
@@ -139,7 +141,7 @@ def test_parse_skill_file_strips_directional_chars_from_body() -> None:
     assert result.system_prompt == "safetext"
 
 
-def test_parse_skill_file_uses_endpoint_auth_key_env_trust_tier_when_present() -> None:
+def test_parse_skill_file_uses_endpoint_and_auth_key_env_when_present() -> None:
     content = (
         "---\nname: my_skill\ndescription: d\nparameters:\n  type: object\n"
         "endpoint: https://api.example.com\nauth_key_env: MY_KEY\ntrust_tier: t1\n---\nbody\n"
@@ -148,7 +150,17 @@ def test_parse_skill_file_uses_endpoint_auth_key_env_trust_tier_when_present() -
     assert result is not None
     assert result.endpoint == "https://api.example.com"
     assert result.auth_key_env == "MY_KEY"
-    assert result.trust_tier == "t1"
+
+
+def test_parse_skill_file_ignores_self_declared_trust_tier_claim() -> None:
+    """A skill cannot promote itself by claiming trust_tier: t0 in its own frontmatter."""
+    content = (
+        "---\nname: my_skill\ndescription: d\nparameters:\n  type: object\n"
+        "trust_tier: t0\n---\nbody\n"
+    )
+    result = parse_skill_file(content)
+    assert result is not None
+    assert result.trust_tier == "t3"
 
 
 def test_validate_skill_name_accepts_valid_name() -> None:

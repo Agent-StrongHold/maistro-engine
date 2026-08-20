@@ -455,6 +455,7 @@ def make_router(get_store: GetStore) -> APIRouter:
     async def register_definition(
         body: AssetDefinitionIn = Body(...),
         store: AssetStore = Depends(store_dep),
+        auth: CurrentUser = Depends(get_current_user),
     ) -> AssetDefinitionOut:
         try:
             defn = _definition_in_to_dataclass(body)
@@ -467,6 +468,7 @@ def make_router(get_store: GetStore) -> APIRouter:
     async def get_definition(
         asset_id: str = Path(...),
         store: AssetStore = Depends(store_dep),
+        auth: CurrentUser = Depends(get_current_user),
     ) -> AssetDefinitionOut:
         defn = await store.get_definition(asset_id)
         if defn is None:
@@ -483,6 +485,7 @@ def make_router(get_store: GetStore) -> APIRouter:
     async def list_definitions(
         kind: str = Query(...),
         store: AssetStore = Depends(store_dep),
+        auth: CurrentUser = Depends(get_current_user),
     ) -> list[AssetDefinitionOut]:
         defs = await store.list_definitions_by_kind(kind)
         return [_definition_to_out(d) for d in defs]
@@ -492,6 +495,7 @@ def make_router(get_store: GetStore) -> APIRouter:
         asset_id: str = Path(...),
         body: AssetDefinitionIn = Body(...),
         store: AssetStore = Depends(store_dep),
+        auth: CurrentUser = Depends(get_current_user),
     ) -> AssetDefinitionOut:
         if asset_id != body.asset_id:
             raise HTTPException(409, {"detail": "asset_id in path and body do not match"})
@@ -508,6 +512,7 @@ def make_router(get_store: GetStore) -> APIRouter:
         asset_id: str = Path(...),
         body: AssetSheetIn = Body(...),
         store: AssetStore = Depends(store_dep),
+        auth: CurrentUser = Depends(get_current_user),
     ) -> AssetSheetOut:
         if asset_id != body.asset_id:
             raise HTTPException(409, {"detail": "asset_id in path and body do not match"})
@@ -525,6 +530,7 @@ def make_router(get_store: GetStore) -> APIRouter:
     async def get_sheet(
         asset_id: str = Path(...),
         store: AssetStore = Depends(store_dep),
+        auth: CurrentUser = Depends(get_current_user),
     ) -> AssetSheetOut:
         sheet = await store.get_sheet(asset_id)
         if sheet is None:
@@ -545,6 +551,7 @@ def make_router(get_store: GetStore) -> APIRouter:
         asset_id: str = Path(...),
         body: RegenerateRequest = Body(...),
         store: AssetStore = Depends(store_dep),
+        auth: CurrentUser = Depends(get_current_user),
     ) -> AssetSheetOut:
         try:
             sheet = await store.regenerate_sheet(
@@ -569,6 +576,7 @@ def make_router(get_store: GetStore) -> APIRouter:
     async def upsert_instance(
         body: AssetInstanceIn = Body(...),
         store: AssetStore = Depends(store_dep),
+        auth: CurrentUser = Depends(get_current_user),
     ) -> AssetInstanceOut:
         try:
             instance = _instance_in_to_dataclass(body)
@@ -581,6 +589,7 @@ def make_router(get_store: GetStore) -> APIRouter:
     async def get_instance(
         instance_id: str = Path(...),
         store: AssetStore = Depends(store_dep),
+        auth: CurrentUser = Depends(get_current_user),
     ) -> AssetInstanceOut:
         instance = await store.get_instance(instance_id)
         if instance is None:
@@ -591,6 +600,7 @@ def make_router(get_store: GetStore) -> APIRouter:
     async def remove_instance(
         instance_id: str = Path(...),
         store: AssetStore = Depends(store_dep),
+        auth: CurrentUser = Depends(get_current_user),
     ) -> None:
         await store.remove_instance(instance_id)
 

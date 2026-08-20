@@ -28,6 +28,7 @@ logger = logging.getLogger("maistro.credentials")
 T = TypeVar("T")
 
 _MASTER_KEY_ENV = "HIVE_CREDENTIALS_MASTER_KEY"
+_MASTER_KEY_DIR_ENV = "HIVE_CREDENTIALS_MASTER_KEY_DIR"
 _MASTER_KEY_FILENAME = "credential_master.key"
 _STORE_FILENAME = "user_credentials.enc"
 # Staging names used by rotation. ``credential_master.key.new`` doubles as the
@@ -38,6 +39,7 @@ _PENDING_STORE_FILENAME = _STORE_FILENAME + ".new"
 
 #: Public aliases for operator tooling (``maistro security ...``).
 MASTER_KEY_ENV_VAR = _MASTER_KEY_ENV
+MASTER_KEY_DIR_ENV_VAR = _MASTER_KEY_DIR_ENV
 MASTER_KEY_FILENAME = _MASTER_KEY_FILENAME
 STORE_FILENAME = _STORE_FILENAME
 
@@ -52,6 +54,22 @@ _KEY_FILE_MODE = 0o600
 DEFAULT_WORKSPACE_ID = "default"
 DEFAULT_CONNECTION_NAME = "default"
 _SCOPE_SEPARATOR = "::"
+
+
+def _resolve_master_key_dir(data_dir: Path, explicit: Path | None) -> Path:
+    """Directory the master-key file lives in.
+
+    Precedence: explicit ``master_key_dir`` argument, then the
+    ``HIVE_CREDENTIALS_MASTER_KEY_DIR`` env var, then ``data_dir`` (the
+    original, unchanged default) so existing callers keep their exact
+    current behavior.
+    """
+    if explicit is not None:
+        return Path(explicit).expanduser()
+    env_dir = os.getenv(_MASTER_KEY_DIR_ENV, "").strip()
+    if env_dir:
+        return Path(env_dir).expanduser()
+    return data_dir
 
 
 def _bucket_key(provider: str, workspace_id: str, connection_name: str) -> str:
@@ -141,7 +159,9 @@ def _key_reads_store(key_path: Path, store_path: Path) -> bool:
     return True
 
 
-def repair_interrupted_rotation(data_dir: str | Path) -> bool:
+def repair_interrupted_rotation(
+    data_dir: str | Path, *, master_key_dir: str | Path | None = None
+) -> bool:
     """Finish (or discard) a master-key rotation that was interrupted.
 
     Rotation swaps the ciphertext first and the key file second, with the new
@@ -154,14 +174,18 @@ def repair_interrupted_rotation(data_dir: str | Path) -> bool:
       between the two renames; promote the staged key.
     * neither reads it → do not guess. Leave everything for the operator.
 
+    ``master_key_dir`` defaults to ``data_dir``, preserving prior behavior for
+    callers that keep the key alongside the store.
+
     Returns True only when a staged key was promoted.
     """
     path = Path(data_dir).expanduser()
-    pending_key = path / _PENDING_MASTER_KEY_FILENAME
+    key_dir = Path(master_key_dir).expanduser() if master_key_dir is not None else path
+    pending_key = key_dir / _PENDING_MASTER_KEY_FILENAME
     if not pending_key.exists():
         return False
 
-    key_path = path / _MASTER_KEY_FILENAME
+    key_path = key_dir / _MASTER_KEY_FILENAME
     store_path = path / _STORE_FILENAME
     pending_store = path / _PENDING_STORE_FILENAME
 
@@ -183,7 +207,7 @@ def repair_interrupted_rotation(data_dir: str | Path) -> bool:
         return False
 
     os.replace(pending_key, key_path)
-    _fsync_dir(path)
+    _fsync_dir(key_dir)
     pending_store.unlink(missing_ok=True)
     # stdlib logger — keyword args raise TypeError. Use % formatting.
     # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure -- logs the key FILE path, never the key material
@@ -194,10 +218,18 @@ def repair_interrupted_rotation(data_dir: str | Path) -> bool:
 class UserCredentialStore:
     """Encrypts per-user integration secrets in a single file."""
 
-    def __init__(self, data_dir: Path, *, master_key: bytes | None = None) -> None:
+    def __init__(
+        self,
+        data_dir: Path,
+        *,
+        master_key: bytes | None = None,
+        master_key_dir: Path | None = None,
+    ) -> None:
         self._data_dir = data_dir.expanduser()
         self._data_dir.mkdir(parents=True, exist_ok=True)
-        self._master_key_path = self._data_dir / _MASTER_KEY_FILENAME
+        self._master_key_dir = _resolve_master_key_dir(self._data_dir, master_key_dir)
+        self._master_key_dir.mkdir(parents=True, exist_ok=True)
+        self._master_key_path = self._master_key_dir / _MASTER_KEY_FILENAME
         self._store_path = self._data_dir / _STORE_FILENAME
         self._master_key = self._resolve_master_key(master_key)
         self._fernet = Fernet(self._master_key)
@@ -216,21 +248,34 @@ class UserCredentialStore:
         )
 
     @classmethod
-    def open(cls, data_dir: str | Path) -> UserCredentialStore:
-        """Open or create the encrypted store under ``data_dir``."""
+    def open(
+        cls, data_dir: str | Path, *, master_key_dir: str | Path | None = None
+    ) -> UserCredentialStore:
+        """Open or create the encrypted store under ``data_dir``.
+
+        ``master_key_dir`` (or the ``HIVE_CREDENTIALS_MASTER_KEY_DIR`` env var)
+        optionally relocates just the master-key file to a directory separate
+        from ``data_dir`` — e.g. a more restricted volume than the one holding
+        the encrypted secrets themselves. Leaving it unset preserves the
+        original behavior of keeping the key alongside the store.
+        """
         path = Path(data_dir).expanduser()
         path.mkdir(parents=True, exist_ok=True)
+        key_dir = _resolve_master_key_dir(
+            path, Path(master_key_dir).expanduser() if master_key_dir is not None else None
+        )
+        key_dir.mkdir(parents=True, exist_ok=True)
         # Before deciding the key file is missing, settle any rotation that was
         # killed mid-swap — otherwise we would mint a third key over the top.
-        repair_interrupted_rotation(path)
-        key_path = path / _MASTER_KEY_FILENAME
+        repair_interrupted_rotation(path, master_key_dir=key_dir)
+        key_path = key_dir / _MASTER_KEY_FILENAME
         if not key_path.exists():
             key = generate_master_key()
             _atomic_write_bytes(key_path, key)
             # stdlib logger — keyword args raise TypeError. Use % formatting.
             # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure -- logs the key FILE path, never the key material
             logger.info("credential_master_key_created path=%s", str(key_path))
-        return cls(path, master_key=key_path.read_bytes())
+        return cls(path, master_key=key_path.read_bytes(), master_key_dir=key_dir)
 
     def _load(self) -> dict[str, dict[str, str]]:
         if self._cache is not None:
@@ -291,7 +336,7 @@ class UserCredentialStore:
         payload = json.dumps(data).encode()
 
         pending_store = self._data_dir / _PENDING_STORE_FILENAME
-        pending_key = self._data_dir / _PENDING_MASTER_KEY_FILENAME
+        pending_key = self._master_key_dir / _PENDING_MASTER_KEY_FILENAME
 
         _atomic_write_bytes(pending_store, new_fernet.encrypt(payload))
         try:
@@ -311,7 +356,7 @@ class UserCredentialStore:
         os.replace(pending_store, self._store_path)
         _fsync_dir(self._data_dir)
         os.replace(pending_key, self._master_key_path)
-        _fsync_dir(self._data_dir)
+        _fsync_dir(self._master_key_dir)
 
         self._master_key = new_key
         self._fernet = new_fernet

@@ -24,6 +24,15 @@ def _split_frontmatter(content: str) -> tuple[str, str] | None:
 _VALID_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{1,50}$")
 MAX_SKILL_BODY_LENGTH = 50000
 
+# Trust tier is never self-declared. A skill's own frontmatter is
+# attacker-controlled content -- a malicious skill could otherwise just
+# write `trust_tier: t0` and claim the most-trusted tier with zero
+# vetting. Every freshly parsed skill starts at the lowest tier (t3, same
+# floor `import_pipeline.IMPORT_TRUST_TIER` and `forge.py` already enforce
+# for their own outputs); only a separate, authenticated promotion step
+# (e.g. SPEC-005 signing) may raise it.
+UNVETTED_TRUST_TIER = "t3"
+
 _DIRECTIONAL_CHARS = frozenset(
     {
         0x200E,
@@ -125,7 +134,8 @@ def parse_skill_file(content: str, source: str = "") -> SkillDefinition | None:
         auth_key_env=str(frontmatter.get("auth_key_env", "")),
         system_prompt=body,
         source=source,
-        trust_tier=str(frontmatter.get("trust_tier", "t2")),
+        # Ignore any trust_tier the frontmatter claims -- see UNVETTED_TRUST_TIER.
+        trust_tier=UNVETTED_TRUST_TIER,
     )
 
 

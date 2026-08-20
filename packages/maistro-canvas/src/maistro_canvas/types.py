@@ -433,6 +433,9 @@ _MIN_DIM = 64
 _MAX_DIM = 8192
 _VALID_EXPORT_FORMATS = frozenset({"png", "webp", "jpg", "jpeg"})
 _MAX_REFERENCE_PHOTOS = 5
+# First-pass reasonable default cap on images requested per generation call
+# (no existing "max images per request" constant elsewhere to reuse).
+_MAX_GENERATE_COUNT = 20
 
 
 def validate_canvas_dimensions(width: int, height: int) -> None:

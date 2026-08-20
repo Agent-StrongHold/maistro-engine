@@ -171,7 +171,23 @@ class SkillMarketplace:
             msg = f"Skill rejected by security scan: {', '.join(findings)}"
             raise ValueError(msg)
 
-        skill = parse_skill_file(content, source=url)
+        # Salvage pass (same primitive the ADR-083 import pipeline composes):
+        # even content that clears the raw scan can carry fixable issues
+        # (hidden unicode markers, shell commands, a self-declared trust tier
+        # claim). Re-scan the salvaged output before trusting it, and persist
+        # *that* content -- never the untouched fetched text.
+        fixed, fixes, unfixable = fix_content(content)
+        if unfixable:
+            msg = f"Skill rejected after security repair: {', '.join(unfixable)}"
+            raise ValueError(msg)
+
+        safe_after, residual = security_scan(fixed)
+        if not safe_after:
+            critical = [f for f in residual if f.startswith("CRITICAL:")]
+            msg = f"Skill rejected by security scan after repair: {', '.join(critical)}"
+            raise ValueError(msg)
+
+        skill = parse_skill_file(fixed, source=url)
         if skill is None:
             msg = f"Failed to parse skill from {url}"
             raise ValueError(msg)
@@ -190,16 +206,17 @@ class SkillMarketplace:
 
         self._skills_dir.mkdir(parents=True, exist_ok=True)
         filepath = self._skills_dir / f"{skill.name}.md"
-        filepath.write_text(content, encoding="utf-8")
+        filepath.write_text(fixed, encoding="utf-8")
 
         self._registry.register(skill)
 
         logger.info(
-            "Installed skill '%s' from %s (tier=%s, warnings=%d)",
+            "Installed skill '%s' from %s (tier=%s, warnings=%d, fixes=%d)",
             skill.name,
             url,
             trust_tier,
             len([f for f in findings if f.startswith("WARNING:")]),
+            len(fixes),
         )
 
         return skill

@@ -77,6 +77,19 @@ def _resolve_session(session_id: str) -> dict[str, Any] | None:
     sess = stores.sessions[session_id]
     if not isinstance(sess, dict):
         return None
+    created_at = sess.get("created_at")
+    if isinstance(created_at, str):
+        try:
+            created = datetime.fromisoformat(created_at)
+        except ValueError:
+            created = None
+        if created is not None:
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=UTC)
+            age = (datetime.now(UTC) - created).total_seconds()
+            if age > _COOKIE_MAX_AGE:
+                stores.sessions.pop(session_id, None)
+                return None
     user_id = sess.get("user_id")
     if not user_id or user_id not in stores.users:
         return None

@@ -264,7 +264,7 @@ class Sentinel:
             violations.extend(schema_verdict.violations)
 
         verdict = SentinelVerdict(
-            allowed=True,
+            allowed=schema_verdict.allowed,
             repaired=schema_verdict.repaired,
             repaired_data=schema_verdict.repaired_data,
             violations=tuple(violations),

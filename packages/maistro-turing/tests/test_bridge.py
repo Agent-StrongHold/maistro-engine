@@ -49,24 +49,28 @@ class FakeLearningStore:
 
 
 class FakeWardenResult:
-    def __init__(self, verdict: str, flags: list[str]) -> None:
-        self.verdict = verdict
+    def __init__(self, clean: bool, blocked: bool, flags: list[str]) -> None:
+        self.clean = clean
+        self.blocked = blocked
         self.flags = flags
 
 
 class FakeWarden:
+    """Quacks like ``Warden.scan(content, boundary) -> WardenVerdict``."""
+
     def __init__(self, verdict: str = "allowed", flags: list[str] | None = None) -> None:
-        self._verdict = verdict
+        self._clean = verdict == "allowed"
+        self._blocked = verdict == "blocked"
         self._flags = flags or []
         self.scan_calls: list[tuple[str, str]] = []
 
-    def scan(self, content: str, source: str = "") -> FakeWardenResult:
-        self.scan_calls.append((content, source))
-        return FakeWardenResult(self._verdict, self._flags)
+    async def scan(self, content: str, boundary: str = "") -> FakeWardenResult:
+        self.scan_calls.append((content, boundary))
+        return FakeWardenResult(self._clean, self._blocked, self._flags)
 
 
 class RaisingWarden:
-    def scan(self, content: str, source: str = "") -> FakeWardenResult:
+    async def scan(self, content: str, boundary: str = "") -> FakeWardenResult:
         raise RuntimeError("warden exploded")
 
 
@@ -195,7 +199,7 @@ class TestTuringSecurityBridge:
         bridge = TuringSecurityBridge(warden=warden)
         result = await bridge.scan_self_write("content", kind="blog")
         assert result == {"verdict": "blocked", "flags": ["pii"]}
-        assert warden.scan_calls == [("content", "turing-self-write:blog")]
+        assert warden.scan_calls == [("content", "user_input")]
 
     async def test_scan_self_write_swallows_warden_exception(self) -> None:
         bridge = TuringSecurityBridge(warden=RaisingWarden())

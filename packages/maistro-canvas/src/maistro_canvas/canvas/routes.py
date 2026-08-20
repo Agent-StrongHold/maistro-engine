@@ -47,6 +47,7 @@ from fastapi.responses import JSONResponse, Response
 
 from maistro_canvas.auth import CurrentUser, get_current_user
 from maistro_canvas.types import (
+    _MAX_GENERATE_COUNT,
     _VALID_EXPORT_FORMATS,
     CanvasArchivedError,
     CanvasError,
@@ -521,6 +522,13 @@ def _register_job_routes(
         await _require_canvas(store, canvas_id, auth.org_id)
         await _require_layer(store, canvas_id, layer_id)
 
+        count = int(body.get("count", 1))
+        if not (1 <= count <= _MAX_GENERATE_COUNT):
+            raise HTTPException(
+                status_code=422,
+                detail=f"count must be between 1 and {_MAX_GENERATE_COUNT}",
+            )
+
         try:
             job = await executor.start_job(
                 canvas_id=canvas_id,
@@ -528,7 +536,7 @@ def _register_job_routes(
                 action=str(body.get("action", "generate")),
                 model_id=body.get("model_id"),
                 prompt=str(body.get("prompt", "")),
-                count=int(body.get("count", 1)),
+                count=count,
                 seed=body.get("seed"),
                 negative_prompt=str(body.get("negative_prompt", "")),
                 region=str(body.get("region", "full")),
@@ -555,6 +563,7 @@ def _register_job_routes(
         auth: CurrentUser = Depends(get_current_user),
     ) -> JSONResponse:
         await _require_canvas(store, canvas_id, auth.org_id)
+        await _require_layer(store, canvas_id, layer_id)
         jobs = await store.list_jobs_for_layer(layer_id)
         return JSONResponse(content=[j.to_dict() for j in jobs])
 

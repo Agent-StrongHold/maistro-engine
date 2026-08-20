@@ -26,6 +26,37 @@ class FilesystemSkillLoader:
     def __init__(self, skills_dir: Path) -> None:
         self._skills_dir = skills_dir
 
+    def _load_one(self, path: Path) -> SkillDefinition | None:
+        """Load a single SKILL.md file: symlink guard, read, scan, parse.
+
+        Every skill file is security-scanned before being made available —
+        loading from disk is a trust boundary just like marketplace install.
+        """
+        if path.is_symlink():
+            logger.warning("Skipping symlink in skills dir: %s", path)
+            return None
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError:
+            logger.warning("Cannot read skill file: %s", path)
+            return None
+
+        safe, findings = security_scan(content)
+        if not safe:
+            logger.warning(
+                "Skipping skill file (failed security scan): %s (%s)",
+                path,
+                ", ".join(f for f in findings if f.startswith("CRITICAL:")),
+            )
+            return None
+
+        skill = parse_skill_file(content, source=str(path))
+        if skill is None:
+            logger.warning("Invalid skill file (parse failed): %s", path)
+            return None
+
+        return skill
+
     def load_all(self) -> list[SkillDefinition]:
         """Load all *.md files from the skills directory."""
         if not self._skills_dir.is_dir():
@@ -34,31 +65,15 @@ class FilesystemSkillLoader:
 
         skills: list[SkillDefinition] = []
         for path in sorted(self._skills_dir.glob("*.md")):
-            if path.is_symlink():
-                logger.warning("Skipping symlink in skills dir: %s", path)
-                continue
-            try:
-                content = path.read_text(encoding="utf-8")
-            except OSError:
-                logger.warning("Cannot read skill file: %s", path)
-                continue
-
-            skill = parse_skill_file(content, source=str(path))
-            if skill is None:
-                logger.warning("Invalid skill file (parse failed): %s", path)
-                continue
-
-            skills.append(skill)
-            logger.debug("Loaded skill: %s from %s", skill.name, path.name)
+            skill = self._load_one(path)
+            if skill is not None:
+                skills.append(skill)
+                logger.debug("Loaded skill: %s from %s", skill.name, path.name)
 
         community_dir = self._skills_dir / "community"
         if community_dir.is_dir():
             for path in sorted(community_dir.glob("*.md")):
-                try:
-                    content = path.read_text(encoding="utf-8")
-                except OSError:
-                    continue
-                skill = parse_skill_file(content, source=str(path))
+                skill = self._load_one(path)
                 if skill is not None:
                     skills.append(skill)
 

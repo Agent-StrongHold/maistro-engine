@@ -19,6 +19,13 @@ from maistro.tasks.models import TaskCreate
 from maistro.tasks.queue import TaskQueue, get_task_queue
 from maistro_server.api.schemas import CIWebhookIgnored, WebhookAccepted, WebhookIgnored
 
+# WebDAV's 423 Locked is repurposed here (as elsewhere in the security layer,
+# see `security/gate.py`'s account lockout) to mean "held back by a security
+# gate" -- distinct from 403 (auth/signature failure) so callers can tell
+# "you're not who you say you are" apart from "you are who you say you are,
+# but the content you sent tripped injection detection".
+_HTTP_423_LOCKED = 423
+
 logger = structlog.get_logger()
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
@@ -140,6 +147,13 @@ async def github_webhook(
         injections = detect_injection(title)
         if injections:
             await logger.awarn("injection_detected_in_pr", pr=number, patterns=injections)
+            raise HTTPException(
+                status_code=_HTTP_423_LOCKED,
+                detail=(
+                    f"PR #{number} quarantined: potential prompt injection detected "
+                    f"in title ({', '.join(injections)})"
+                ),
+            )
 
         task = TaskCreate(
             description=wrapped,
@@ -165,6 +179,13 @@ async def github_webhook(
         injections = detect_injection(title) + detect_injection(body_text[:500])
         if injections:
             await logger.awarn("injection_detected_in_issue", issue=number, patterns=injections)
+            raise HTTPException(
+                status_code=_HTTP_423_LOCKED,
+                detail=(
+                    f"Issue #{number} quarantined: potential prompt injection detected "
+                    f"in title/body ({', '.join(injections)})"
+                ),
+            )
 
         task = TaskCreate(
             description=wrapped,

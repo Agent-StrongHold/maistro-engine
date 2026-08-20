@@ -12,6 +12,7 @@ the interface Turing expects.
 
 from __future__ import annotations
 
+import inspect
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -210,10 +211,12 @@ class TuringSecurityBridge:
         if self._warden is None:
             return {"verdict": "allowed", "flags": []}
         try:
-            result = self._warden.scan(content, source=f"turing-self-write:{kind}")
+            result = self._warden.scan(content, "user_input")
+            if inspect.isawaitable(result):
+                result = await result
             return {
-                "verdict": getattr(result, "verdict", "allowed"),
-                "flags": getattr(result, "flags", []),
+                "verdict": "blocked" if not result.clean else "allowed",
+                "flags": list(getattr(result, "flags", [])),
             }
         except Exception:
             logger.exception("warden scan failed for self-write")
@@ -223,10 +226,12 @@ class TuringSecurityBridge:
         if self._warden is None:
             return {"verdict": "allowed", "flags": []}
         try:
-            result = self._warden.scan(content, source=f"turing-tool-result:{tool_name}")
+            result = self._warden.scan(content, "tool_result")
+            if inspect.isawaitable(result):
+                result = await result
             return {
-                "verdict": getattr(result, "verdict", "allowed"),
-                "flags": getattr(result, "flags", []),
+                "verdict": "blocked" if not result.clean else "allowed",
+                "flags": list(getattr(result, "flags", [])),
             }
         except Exception:
             logger.exception("warden scan failed for tool result")

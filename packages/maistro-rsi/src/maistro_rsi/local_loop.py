@@ -125,6 +125,12 @@ _GIT_CONFIG = (
     "user.email=rsi@maistro.local",
     "-c",
     "user.name=maistro-rsi",
+    # These clones/worktrees hold agent-controlled content (patches applied by
+    # the RSI loop). A malicious commit could ship a `.git/hooks/` script that
+    # would otherwise execute on the host during any git operation here —
+    # neutralize hooks unconditionally rather than trusting the content.
+    "-c",
+    "core.hooksPath=/dev/null",
 )
 
 
@@ -1556,6 +1562,7 @@ class LocalRsiLoop:
                 self._baseline,
                 "commit",
                 "-q",
+                "--no-verify",
                 "-m",
                 f"resume: reapply {applied} saved patch(es)",
             )
@@ -1621,6 +1628,7 @@ class LocalRsiLoop:
                 cdir,
                 "commit",
                 "-q",
+                "--no-verify",
                 "-m",
                 f"RSI cycle {index} [{competitor.label}]: {objective[:50]}",
             )
@@ -2054,6 +2062,7 @@ class LocalRsiLoop:
             merge_dir,
             "commit",
             "-q",
+            "--no-verify",
             "-m",
             f"RSI cycle {index}: merged {len(kept)} complementary fix(es) of {target}",
         )
