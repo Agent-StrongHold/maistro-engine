@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+import pytest
 from pydantic import BaseModel
 
 from maistro.graph.definitions import Graph
@@ -262,3 +263,64 @@ class TestInitialInputsAndIdentity:
         assert result.status is RunStatus.COMPLETED
         assert result.run.result == {"text": "hi"}
         assert result.node_runs[0].result == {"text": "hi"}
+
+
+class TestBlackboardCompaction:
+    """ADR-066 IMP-044 — the durable loop shrinks an oversized snapshot
+    before handing it to the next frontier (deterministic path only)."""
+
+    @staticmethod
+    def _record(metadata: dict[str, Any]):
+        return durable_record(
+            {
+                "id": "one",
+                "nodes": [{"id": "n1", "kind": "test.executor_mutants.echo"}],
+                "edges": [],
+            },
+            run_id="r-compact",
+            blackboard_snapshot={"task_objective": "t", "metadata": metadata},
+        )
+
+    def test_small_snapshot_passes_through_untouched(self) -> None:
+        from maistro.graph.compaction import ContextCompactor
+        from maistro.graph.durable_runs.executor import _maybe_compact_blackboard
+
+        record = self._record({"note": "tiny"})
+        updated = _maybe_compact_blackboard(record, ContextCompactor())
+        assert updated is record
+
+    @pytest.mark.ac("ADR-066/AC-9")
+    @pytest.mark.ac("ADR-066/AC-10")
+    def test_oversized_snapshot_is_compacted_and_stamped(self) -> None:
+        from maistro.graph.compaction import ContextCompactor
+        from maistro.graph.durable_runs.executor import _maybe_compact_blackboard
+
+        big = {"blob": "x" * 40_000, "keep": "small"}
+        record = self._record(big)
+        updated = _maybe_compact_blackboard(record, ContextCompactor())
+        assert updated is not record
+        meta = updated.graph_state.blackboard_snapshot["metadata"]
+        assert len(meta["blob"]) <= 500
+        assert meta["keep"] == "small"
+        assert "_compaction_summary" in meta
+
+    def test_unrelated_snapshot_keys_survive_compaction(self) -> None:
+        from maistro.graph.compaction import ContextCompactor
+        from maistro.graph.durable_runs.executor import _maybe_compact_blackboard
+
+        snapshot = {
+            "task_objective": "t",
+            "metadata": {"blob": "x" * 40_000},
+            "custom_key": "survives",
+        }
+        record = durable_record(
+            {
+                "id": "one",
+                "nodes": [{"id": "n1", "kind": "test.executor_mutants.echo"}],
+                "edges": [],
+            },
+            run_id="r-compact-2",
+            blackboard_snapshot=snapshot,
+        )
+        updated = _maybe_compact_blackboard(record, ContextCompactor())
+        assert updated.graph_state.blackboard_snapshot["custom_key"] == "survives"

@@ -127,41 +127,35 @@ def _annotation_str(ann: Any) -> str:
     return str(ann).replace("typing.", "")
 
 
-def _import_node_modules() -> None:
-    """Eagerly import every concrete node module so each self-registers.
-
-    Done via ``importlib`` (not a top-level ``from . import ...``) because the
-    concrete modules call :func:`register_node` at import time, so they must be
-    imported only after this module's registry + ``register_node`` are defined.
-    Keep this list flat + alphabetical so new kinds are obvious to add.
-    """
-    import importlib
-
-    module_names = (
-        "agent_delegate_remote",  # registers "agent.delegate_remote"
-        "agent_spawn_harness",  # registers "agent.spawn_harness"
-        "agent_synth_dag",  # registers "agent.synth_dag"
-        "airtable_poll",  # registers "airtable.poll"
-        "compliance_block",  # registers "compliance.block"
-        "dashboard_append_section",  # registers "dashboard.append_section"
-        "human_approve_draft",  # registers "human.approve_draft"
-        "human_ask_question",  # registers "human.ask_question"
-        "human_delegate_to_role",  # registers "human.delegate_to_role"
-        "human_review_and_edit",  # registers "human.review_and_edit"
-        "jira_poll",  # registers "jira.poll"
-        "jira_wait_for_subtasks",  # registers "jira.wait_for_subtasks"
-        "llm_summarize",  # registers "llm.summarize"
-        "rsi_quota_pace_trigger",  # registers "rsi.quota_pace_trigger"
-        "transform_alias_keys",  # registers "transform.alias_keys"
-        "transform_extract_field",  # registers "transform.extract_field"
-        "transform_filter_by_type",  # registers "transform.filter_by_type"
-        "transform_format_markdown",  # registers "transform.format_markdown"
-    )
-    for name in module_names:
-        importlib.import_module(f"{__name__}.{name}")
-
-
-_import_node_modules()
+# Eagerly import every concrete node module so each self-registers. The
+# modules call register_node at import time, so this statement must sit below
+# the registry definitions — hence the E402. Static `from . import` rather
+# than an importlib loop over strings, because the reachability scanner
+# (scripts/check-reachability.py) reads AST imports: the loop made all of
+# these modules — and everything only they import, maistro.graph.depth
+# included — read as "unreachable" while executing on every boot. The
+# redundant `x as x` aliases mark the names as intentional re-exports.
+# Keep the list flat + alphabetical so new kinds are obvious to add.
+# isort: off
+from . import agent_delegate_remote as agent_delegate_remote  # noqa: E402  (registers "agent.delegate_remote")
+from . import agent_spawn_harness as agent_spawn_harness  # noqa: E402  (registers "agent.spawn_harness")
+from . import agent_synth_dag as agent_synth_dag  # noqa: E402  (registers "agent.synth_dag")
+from . import airtable_poll as airtable_poll  # noqa: E402  (registers "airtable.poll")
+from . import compliance_block as compliance_block  # noqa: E402  (registers "compliance.block")
+from . import dashboard_append_section as dashboard_append_section  # noqa: E402  (registers "dashboard.append_section")
+from . import human_approve_draft as human_approve_draft  # noqa: E402  (registers "human.approve_draft")
+from . import human_ask_question as human_ask_question  # noqa: E402  (registers "human.ask_question")
+from . import human_delegate_to_role as human_delegate_to_role  # noqa: E402  (registers "human.delegate_to_role")
+from . import human_review_and_edit as human_review_and_edit  # noqa: E402  (registers "human.review_and_edit")
+from . import jira_poll as jira_poll  # noqa: E402  (registers "jira.poll")
+from . import jira_wait_for_subtasks as jira_wait_for_subtasks  # noqa: E402  (registers "jira.wait_for_subtasks")
+from . import llm_summarize as llm_summarize  # noqa: E402  (registers "llm.summarize")
+from . import rsi_quota_pace_trigger as rsi_quota_pace_trigger  # noqa: E402  (registers "rsi.quota_pace_trigger")
+from . import transform_alias_keys as transform_alias_keys  # noqa: E402  (registers "transform.alias_keys")
+from . import transform_extract_field as transform_extract_field  # noqa: E402  (registers "transform.extract_field")
+from . import transform_filter_by_type as transform_filter_by_type  # noqa: E402  (registers "transform.filter_by_type")
+from . import transform_format_markdown as transform_format_markdown  # noqa: E402  (registers "transform.format_markdown")
+# isort: on
 
 __all__ = [
     "BaseNode",

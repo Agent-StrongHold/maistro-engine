@@ -15,6 +15,15 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
+# Import-for-side-effect: @register_node puts "design.orchestrate" into
+# maistro-core's DAG node registry (ADR-061 §6). This is the hive
+# node-registration path the convergence plan names — at module scope, not
+# inside start_design_service, whose broad exception handling would turn a
+# registration failure into a warning line. maistro_design is a hard
+# dependency of this app (routes/design.py imports it unguarded), so an
+# ImportError here is a real boot failure, which is the honest outcome.
+import maistro_design.nodes  # noqa: F401
+
 if TYPE_CHECKING:
     from config import Settings
 
@@ -139,12 +148,16 @@ async def start_design_service(settings: Settings) -> None:
         load_builtins(skill_registry)
         logger.info("Design skill registry initialized")
 
-        # Initialize system registry with bundled systems
+        # Initialize system registry with bundled systems (ADR-100). This
+        # import previously named a module that does not exist
+        # (maistro_design.systems.builtins); the except below swallowed the
+        # ImportError on every boot, so production always ran the bare
+        # "default" fallback and the six bundled systems never shipped.
         system_registry = InMemoryDesignSystemRegistry()
         try:
-            from maistro_design.systems.builtins import load_builtins as load_system_builtins
+            from maistro_design.systems.importer import load_bundled
 
-            load_system_builtins(system_registry)
+            load_bundled(system_registry)
             logger.info("Design system registry initialized with bundled systems")
         except Exception as exc:
             logger.warning("Failed to load bundled design systems, using default: %s", exc)

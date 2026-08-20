@@ -34,7 +34,7 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field
 
-from maistro.graph.depth import can_spawn, get_role
+from maistro.graph.depth import DEFAULT_MAX_DEPTH, can_spawn, get_role
 from maistro.graph.synth import DagSynthesizer, RuleDagSynthesizer, SynthRequest, SynthResult
 from maistro.security.dag_shape import (
     DEFAULT_PRINCIPAL,
@@ -56,7 +56,9 @@ from .base import BaseNode, NodeContext
 # real width gate is `evaluate_dag_shape`, not this number. Raised well past
 # the old default-8 ceiling since a justified DAG can legitimately be large.
 _MAX_NODE_CEILING = 64
-_DEFAULT_MAX_DEPTH = 3
+# Single source: maistro.graph.depth, shared with the durable executor's
+# increment-site backstop so the two guards cannot drift apart.
+_DEFAULT_MAX_DEPTH = DEFAULT_MAX_DEPTH
 
 
 class SynthDagIn(BaseModel):
