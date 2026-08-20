@@ -30,6 +30,22 @@ tests: []
 source:
   - packages/maistro-core/src/maistro/projects
   - packages/maistro-core/src/maistro/workspaces
+ac-modules:
+  AC-1: maistro.projects.scope
+  AC-2: maistro.projects.scope
+  AC-3: maistro.projects.scope
+  AC-4: maistro.projects.scope
+  AC-5: maistro.projects.scope
+  AC-6: maistro.projects.scope
+  AC-7: maistro.projects.scope
+  AC-8: maistro.projects.scope_store
+  AC-9: maistro.projects.scope
+  AC-10: maistro.projects.authorization
+  AC-11: maistro.projects.authorization
+  AC-12: maistro.projects.authorization
+  AC-13: maistro.projects.authorization
+  AC-14: maistro.projects.scope
+  AC-15: maistro.projects.authorization
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
@@ -118,21 +134,112 @@ Persona MUST NOT contribute grants, denies, credential visibility, or security a
 
 ## Acceptance Criteria
 
-1. Creating a Workspace creates exactly one stable Root Project; repeated root provisioning returns the same Project.
-2. Root Project cannot be moved, deleted, or parented.
-3. Nested Projects maintain same-Workspace parent/child integrity and reject cycles.
-4. A project-scoped Graph created at the Workspace root carries the Root Project ID rather than a null Project ID.
-5. Workspace-wide GraphTemplate instantiation into Project A yields a Graph in A while leaving the Template Workspace-wide.
-6. Project defaults resolve nearest-wins at creation and never retroactively mutate an existing object.
-7. Moving an object leaves its resolved configuration byte-for-byte equivalent except for filing/scope metadata.
-8. A Root credential/resource is visible from all descendants; a child resource is invisible to the Root and siblings.
-9. A move requiring a resource unavailable in the destination is rejected without changing the object's original `project_id`.
-10. Workspace + ancestor + target Project grants accumulate inside the target scope and do not leak to siblings.
-11. A narrower Project can grant stronger authority inside its subtree.
-12. An inherited deny beats both inherited and descendant grants.
-13. `publish` permission alone does not allow granting `publish` to another principal.
-14. A non-empty Project cannot be deleted implicitly.
-15. Persona configuration cannot create authorization that Project/Workspace grants do not provide.
+```gherkin
+Feature: Project scope tree
+
+  @AC-1
+  Scenario: Root provisioning is idempotent
+    Given a new Workspace
+    When the Root Project is provisioned twice
+    Then exactly one Root Project exists
+    And both calls return the same Project
+
+  @AC-2
+  Scenario Outline: The Root Project is immovable
+    Given a Workspace Root Project
+    When it is <operation>
+    Then the operation is refused
+
+    Examples:
+      | operation |
+      | moved     |
+      | deleted   |
+      | parented  |
+
+  @AC-3
+  Scenario: The tree stays acyclic and inside one Workspace
+    Given nested Projects
+    When a parent/child link is created
+    Then both must be in the same Workspace
+    And a link forming a cycle is rejected
+
+  @AC-4
+  Scenario: A Graph at the Workspace root files under Root Project
+    Given a Workspace with its Root Project
+    When a project-scoped Graph is created at the root
+    Then it carries the Root Project ID rather than a null project_id
+
+  @AC-5
+  Scenario: Instantiation files the copy without moving the Template
+    Given a Workspace-wide GraphTemplate
+    When it is instantiated into Project A
+    Then the resulting Graph is filed in A
+    And the Template remains Workspace-wide
+
+  @AC-6
+  Scenario: Defaults resolve nearest-wins and never act retroactively
+    Given defaults set at several levels of the Project tree
+    When an object is created
+    Then the nearest default wins
+    And changing a default later does not mutate that object
+
+  @AC-7
+  Scenario: Moving an object preserves its resolved configuration
+    Given an object with resolved configuration
+    When it is moved to another Project
+    Then its configuration is byte-for-byte equivalent apart from filing and scope metadata
+
+  @AC-8
+  Scenario: Resource visibility follows the tree downward only
+    Given a Credential at the Root and another in a child Project
+    When visibility is resolved
+    Then descendants see the Root resource
+    But the Root and siblings do not see the child resource
+
+  @AC-9
+  Scenario: An impossible move changes nothing
+    Given an object depending on a resource unavailable in the destination
+    When the move is attempted
+    Then it is rejected
+    And the object keeps its original project_id
+
+  @AC-10
+  Scenario: Ancestor grants accumulate without leaking sideways
+    Given grants at Workspace, ancestor and target Project
+    When authorization resolves in the target Project
+    Then all three accumulate
+    And none apply in a sibling Project
+
+  @AC-11
+  Scenario: A narrower Project may hold stronger authority
+    Given a Workspace without an authority
+    When a descendant Project grants it
+    Then it is effective inside that subtree only
+
+  @AC-12
+  Scenario: An inherited deny beats grants above and below
+    Given an inherited deny for an action
+    When both an inherited grant and a descendant grant exist for it
+    Then the action is refused
+
+  @AC-13
+  Scenario: publish does not confer the right to delegate publish
+    Given a principal holding publish
+    When it grants publish to another principal
+    Then the grant is refused
+
+  @AC-14
+  Scenario: A non-empty Project is not deleted implicitly
+    Given a Project containing objects
+    When deletion is requested without explicit handling of its contents
+    Then deletion is refused
+
+  @AC-15
+  Scenario: Persona cannot manufacture authorization
+    Given Project and Workspace grants that exclude an action
+    When the Persona is configured to prefer it
+    Then the action remains unauthorized
+```
 
 ## Migration guidance
 

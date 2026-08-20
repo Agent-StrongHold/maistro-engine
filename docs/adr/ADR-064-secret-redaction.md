@@ -337,10 +337,10 @@ maistro/security/
 ## Gherkin acceptance criteria
 
 > **Measurement note (2026-08-19).** These 44 scenarios are tagged `@AC-N` and
-> measured by `scripts/check-ac-state.py`. Thirty-four are proven end to end —
+> measured by `scripts/check-ac-state.py`. Thirty-five are proven end to end —
 > bound to passing tests over `maistro.security.redact`, which is reachable —
 > including the four nested-pattern-safety scenarios (AC-23, AC-31..34), which
-> got new tests and turned out already true of the implementation. Ten remain
+> got new tests and turned out already true of the implementation. Nine remain
 > `declared` because they name behaviour that does not exist yet:
 >
 > - **AC-12..14** — a JSON-field pattern with a `[REDACTED_JSON_SECRET]` label;
@@ -350,11 +350,6 @@ maistro/security/
 >   `(RSA|EC)?/generic` headers, `OPENSSH` is unverified.
 > - **AC-25** — username-only URL userinfo with `[REDACTED_URL_CREDENTIALS]`.
 > - **AC-35, AC-36** — the latency and backtracking bounds, unbenchmarked.
-> - **AC-41** — states `redact(None)` returns `""`; the implementation returns
->   `None` and its test asserts that. **The scenario and the code contradict
->   each other** — one of them must change, and silently binding either way
->   would paper over exactly the kind of drift this measurement exists to
->   surface.
 > - **AC-42, AC-43** — Telegram bot tokens and Sentry DSNs, patterns not
 >   implemented. These are real catalogue gaps in an Accepted security ADR,
 >   worth their own focused change rather than a side-effect of tagging.

@@ -411,6 +411,7 @@ class TestPoolStats:
         assert stats.total_use_count == 180
         assert stats.total_error_count == 2
 
+    @pytest.mark.ac("ADR-063/AC-29")
     def test_stats_per_key_breakdown(self):
         pool = _pool(["a", "b"])
         stats = pool.get_stats()
@@ -420,7 +421,7 @@ class TestPoolStats:
         for r in stats.per_key:
             assert "use_count" in r
             assert "error_count" in r
-            assert "available" in r
+            assert "is_available" in r
 
     @pytest.mark.ac("ADR-063/AC-30")
     def test_record_success_increments_use_count(self):

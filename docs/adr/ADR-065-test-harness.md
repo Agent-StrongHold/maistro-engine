@@ -15,6 +15,32 @@ blocked-by: []
 contracts:
   - boundary
 tests: []
+ac-modules:
+  AC-1: maistro.testing.harness
+  AC-2: maistro.testing.harness
+  AC-3: maistro.testing.harness
+  AC-4: maistro.testing.harness
+  AC-5: maistro.testing.harness
+  AC-6: maistro.testing.harness
+  AC-7: maistro.testing.harness
+  AC-8: maistro.testing.harness
+  AC-9: maistro.testing.harness
+  AC-10: maistro.testing.harness
+  AC-11: maistro.testing.harness
+  AC-12: maistro.testing.harness
+  AC-13: maistro.testing.harness
+  AC-14: maistro.testing.harness
+  AC-15: maistro.testing.harness
+  AC-17: maistro.testing.harness
+  AC-18: maistro.testing.harness
+  AC-19: maistro.testing.harness
+  AC-20: maistro.testing.harness
+  AC-21: maistro.testing.harness
+  AC-22: maistro.testing.harness
+  AC-23: maistro.testing.harness
+  AC-24: maistro.testing.harness
+  AC-25: maistro.testing.harness
+  AC-26: maistro.testing.harness
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
@@ -166,6 +192,7 @@ Feature: Test harness with full wiring factory
 
   # --- Scenario 1: Factory creates fully wired environment ---
 
+  @AC-1
   Scenario: Factory returns a TestEnvironment with all components
     When create_test_environment is called with no arguments
     Then the returned TestEnvironment has a non-null container
@@ -177,6 +204,7 @@ Feature: Test harness with full wiring factory
     And the events list is empty
     And the responses list is empty
 
+  @AC-2
   Scenario: Factory-created container has all in-memory stores
     When create_test_environment is called with no arguments
     Then the container.learning_store is an InMemoryLearningStore
@@ -187,6 +215,7 @@ Feature: Test harness with full wiring factory
     And the container has a Gate instance
     And the container has a Sentinel instance
 
+  @AC-3
   Scenario: Factory uses default AgentConfig when none provided
     When create_test_environment is called with no arguments
     Then the container.config has a router_api_key set
@@ -194,6 +223,7 @@ Feature: Test harness with full wiring factory
 
   # --- Scenario 2: send_prompt exercises full pipeline ---
 
+  @AC-4
   Scenario: send_prompt routes through classify-route-respond pipeline
     Given a TestEnvironment from create_test_environment
     And the FauxProvider is seeded with a plan response
@@ -202,6 +232,7 @@ Feature: Test harness with full wiring factory
     And the responses list has exactly 1 entry
     And the returned dict has a "choices" key
 
+  @AC-5
   Scenario: send_prompt captures the response for later assertion
     Given a TestEnvironment from create_test_environment
     And the FauxProvider is seeded with a response containing "test output"
@@ -209,6 +240,7 @@ Feature: Test harness with full wiring factory
     Then get_last_response returns a dict with "choices"
     And the first choice message content contains text
 
+  @AC-6
   Scenario: Multiple send_prompt calls accumulate responses
     Given a TestEnvironment from create_test_environment
     And the FauxProvider is seeded with 3 responses
@@ -220,6 +252,7 @@ Feature: Test harness with full wiring factory
 
   # --- Scenario 3: Events are captured for assertions ---
 
+  @AC-7
   Scenario: GraphRun events are captured when run_graph is used
     Given a TestEnvironment from create_test_environment
     And the FauxProvider is seeded with plan, code, and review responses
@@ -229,6 +262,7 @@ Feature: Test harness with full wiring factory
     And the events list contains a graph_completed event
     And each event has a run_id matching the GraphRun
 
+  @AC-8
   Scenario: Node-level events are captured in order
     Given a TestEnvironment from create_test_environment
     And the FauxProvider is seeded with responses for planner, coder, and reviewer
@@ -238,12 +272,14 @@ Feature: Test harness with full wiring factory
     And node_started for planner precedes node_completed for planner
     And node_started for coder precedes node_started for reviewer
 
+  @AC-9
   Scenario: get_events filters by event type
     Given a TestEnvironment with 5 captured events of mixed types
     When get_events is called with event_type "node_completed"
     Then only events with type "node_completed" are returned
     And the original events list is unmodified
 
+  @AC-10
   Scenario: assert_event_type raises on count mismatch
     Given a TestEnvironment with 2 node_completed events
     When assert_event_type is called with type "node_completed" and count 3
@@ -252,24 +288,28 @@ Feature: Test harness with full wiring factory
 
   # --- Scenario 4: Custom components can be injected ---
 
+  @AC-11
   Scenario: Custom FauxProvider with seeded responses is used
     Given a FauxProvider seeded with 2 specific responses
     When create_test_environment is called with that provider
     Then the TestEnvironment.provider is the same seeded FauxProvider instance
     And send_prompt uses the seeded responses in order
 
+  @AC-12
   Scenario: Custom AgentConfig overrides defaults
     Given an AgentConfig with a specific model routing table
     When create_test_environment is called with that config
     Then the container.config matches the provided AgentConfig
     And the RouterEngine uses models from the custom config
 
+  @AC-13
   Scenario: Custom agents are registered in the container
     Given a dict of 2 custom agent instances
     When create_test_environment is called with those agents
     Then the container.agents dict contains the custom agents by name
     And the intent registry includes the custom agent names
 
+  @AC-14
   Scenario: Custom GraphConfig controls node topology
     Given a GraphConfig with nodes [PLANNER, CODER] and no reviewer
     When create_test_environment is called with that graph_config
@@ -278,12 +318,14 @@ Feature: Test harness with full wiring factory
 
   # --- Scenario 5: No network access required ---
 
+  @AC-15
   Scenario: Harness does not import network libraries
     Given the maistro.testing.harness module
     Then it does not import httpx or aiohttp or requests
     And it does not import asyncpg or sqlalchemy
     And FauxProvider.complete does not open any socket
 
+  @AC-16
   Scenario: Tests run without any external service running
     Given no database server is running
     And no LLM API endpoint is reachable
@@ -293,6 +335,7 @@ Feature: Test harness with full wiring factory
 
   # --- Scenario 6: No database required ---
 
+  @AC-17
   Scenario: All stores are in-memory implementations
     When create_test_environment is called
     Then no database connection is created
@@ -300,6 +343,7 @@ Feature: Test harness with full wiring factory
     And container.outcome_store is not a PostgreSQL store
     And container.session_store is not a PostgreSQL store
 
+  @AC-18
   Scenario: Data persists only for the lifetime of the environment
     Given a TestEnvironment from create_test_environment
     When send_prompt is called with "remember this"
@@ -309,6 +353,7 @@ Feature: Test harness with full wiring factory
 
   # --- Scenario 7: Multiple environments can coexist ---
 
+  @AC-19
   Scenario: Two environments are fully independent
     Given a TestEnvironment env_a from create_test_environment
     And a TestEnvironment env_b from create_test_environment
@@ -318,6 +363,7 @@ Feature: Test harness with full wiring factory
     And env_b.send_prompt returns content from response B
     And env_a.events and env_b.events are separate lists
 
+  @AC-20
   Scenario: Concurrent environments do not share state
     Given 5 TestEnvironments created concurrently
     When each environment's send_prompt is called with a unique prompt
@@ -326,6 +372,7 @@ Feature: Test harness with full wiring factory
 
   # --- Scenario 8: Environment cleanup and reset ---
 
+  @AC-21
   Scenario: reset clears captured events and responses
     Given a TestEnvironment with 3 captured events and 1 response
     When reset is called on the environment
@@ -334,6 +381,7 @@ Feature: Test harness with full wiring factory
     And the FauxProvider call_log is empty
     And the FauxProvider response index is reset to 0
 
+  @AC-22
   Scenario: reset allows reuse without reconstruction
     Given a TestEnvironment from create_test_environment
     And send_prompt is called with "first prompt"
@@ -343,6 +391,7 @@ Feature: Test harness with full wiring factory
     Then the responses list has exactly 1 entry from the second prompt
     And the events list contains only events from the second prompt
 
+  @AC-23
   Scenario: reset does not clear registered agents
     Given a TestEnvironment with 2 custom agents registered
     When reset is called
@@ -351,6 +400,7 @@ Feature: Test harness with full wiring factory
 
   # --- Additional coverage scenarios ---
 
+  @AC-24
   Scenario: Event filter limits captured event types
     Given create_test_environment is called with event_filter {"node_completed", "graph_completed"}
     And the FauxProvider is seeded for a full graph run
@@ -358,12 +408,14 @@ Feature: Test harness with full wiring factory
     Then get_events returns only events of type "node_completed" or "graph_completed"
     And get_events("node_started") returns an empty list
 
+  @AC-25
   Scenario: FauxProvider error propagates as graph_failed event
     Given a TestEnvironment with a FauxProvider seeded with an error response
     When run_graph is called
     Then the events list contains a graph_failed event
     And the GraphRun.phase is FAILED
 
+  @AC-26
   Scenario: run_graph returns HyperagentOutput
     Given a TestEnvironment with seeded plan, code, and review responses
     When run_graph is called with task "implement hello world"

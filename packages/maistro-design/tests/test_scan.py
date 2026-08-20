@@ -45,6 +45,7 @@ class TestScanDesignOutput:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("ADR-062326-702b/AC-4")
     def test_blocking_flag_is_tagged_with_dotted_address(self):
         from maistro_design.scan import scan_design_output
         from maistro_design.types import ArtifactKind, ArtifactNode, DesignOutput, OutputFormat

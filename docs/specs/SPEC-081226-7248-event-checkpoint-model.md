@@ -30,6 +30,18 @@ tests: []
 source:
   - packages/maistro-core/src/maistro/events
   - packages/maistro-core/src/maistro/graph/durable_runs
+ac-modules:
+  AC-1: maistro.events.durable_log
+  AC-2: maistro.events.durable_log
+  AC-3: maistro.events.outbox
+  AC-4: maistro.events.invocations
+  AC-5: maistro.events.envelope
+  AC-6: maistro.events.checkpoints
+  AC-7: maistro.events.checkpoints
+  AC-8: maistro.graph.durable_runs.executor
+  AC-9: maistro.graph.durable_runs.executor
+  AC-10: maistro.events.durable_log
+  AC-11: maistro.events.envelope
 layer: Reliability
 owners:
   - '@BlakeMatthews-dev'
@@ -68,18 +80,84 @@ owners:
 
 ## Acceptance Criteria
 
-1. Two concurrent event producers in one Workspace receive a deterministic monotonic sequence ordering from the event store.
-2. Disconnect/reconnect of SSE/WebSocket can replay events after a supplied sequence without losing durable history.
-3. A committed Run transition has a corresponding durable canonical event after reconciliation even if the process crashes between state write and fanout.
-4. Duplicate event delivery does not duplicate idempotent consumer effects when keyed by `event_id`.
-5. Builders StageEvent or GraphEvent adapter test preserves canonical `workspace_id/run_id/node_run_id` correlation.
-6. A waiting NodeRun creates a Checkpoint, releases the worker, survives restart, and resumes via a new Attempt referencing that checkpoint.
-7. Resume is rejected when checkpoint/executable compatibility metadata is invalid.
-8. Stale `running` state with a dead/missing worker is detected and reconciled rather than displayed indefinitely as active.
-9. Crash-loop policy prevents unlimited automatic recovery Attempts.
-10. UI history and audit query can reconstruct Run chronology from the same canonical events.
-11. Metrics/traces for an Invocation can be joined to its canonical Event/Run via correlation IDs without requiring them to be Event payloads.
-12. Architecture fitness checks reject migrated package event publishers that invent a second canonical sequence for the same Workspace stream.
+```gherkin
+Feature: Event and Checkpoint model
+
+  @AC-1
+  Scenario: Concurrent producers share one deterministic sequence
+    Given two producers emitting into one Workspace stream
+    When both emit concurrently
+    Then the event store assigns a deterministic monotonic ordering
+
+  @AC-2
+  Scenario: A reconnecting client replays from a sequence
+    Given a client that disconnects after a known sequence number
+    When it reconnects and supplies that sequence
+    Then it receives the events it missed
+    And no durable history is lost
+
+  @AC-3
+  Scenario: A committed transition always gets its event
+    Given a Run transition committed to state
+    When the process crashes before fanout
+    Then reconciliation produces the corresponding durable canonical event
+
+  @AC-4
+  Scenario: Duplicate delivery does not duplicate effects
+    Given an idempotent consumer keyed by event_id
+    When the same event is delivered twice
+    Then its effect occurs once
+
+  @AC-5
+  Scenario: Adapted package events keep canonical correlation
+    Given a Builders StageEvent or GraphEvent
+    When it passes through its adapter
+    Then it carries canonical workspace_id, run_id and node_run_id
+
+  @AC-6
+  Scenario: A waiting NodeRun releases its worker and resumes
+    Given a NodeRun that must wait
+    When it creates a Checkpoint
+    Then the worker is released
+    And after restart it resumes through a new Attempt referencing that Checkpoint
+
+  @AC-7
+  Scenario: Incompatible checkpoint metadata refuses resume
+    Given a Checkpoint whose compatibility metadata is invalid
+    When resume is attempted
+    Then it is rejected
+
+  @AC-8
+  Scenario: Stale running state is reconciled, not displayed forever
+    Given a NodeRun marked running whose worker is dead or missing
+    When reconciliation runs
+    Then the state is detected and reconciled rather than left active indefinitely
+
+  @AC-9
+  Scenario: Crash-loop policy bounds automatic recovery
+    Given a NodeRun that fails immediately on every recovery Attempt
+    When recovery repeats
+    Then policy stops it rather than retrying without limit
+
+  @AC-10
+  Scenario: Chronology reconstructs from canonical events
+    Given canonical events for a Run
+    When UI history and audit query them
+    Then both reconstruct the same Run chronology
+
+  @AC-11
+  Scenario: Telemetry joins to events by correlation id
+    Given metrics and traces for an Invocation
+    When they are joined to its canonical Event and Run
+    Then correlation IDs suffice
+    And the telemetry need not be carried in Event payloads
+
+  @AC-12
+  Scenario: A second canonical sequence is a violation
+    Given the architecture fitness checks
+    When a migrated publisher invents a second canonical sequence for one Workspace stream
+    Then the checks reject it
+```
 
 ## Non-goals
 

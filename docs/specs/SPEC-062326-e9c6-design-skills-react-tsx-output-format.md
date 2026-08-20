@@ -18,6 +18,19 @@ contracts:
   - boundary
   - behavioral
 tests: []
+ac-modules:
+  AC-1: maistro_design.types
+  AC-2: maistro_design.skills.builtins
+  AC-3: maistro_design.skills.builtins
+  AC-4: maistro_design.skills.builtins
+  AC-5: maistro_design.skills.builtins
+  AC-6: maistro_design.skills.builtins
+  AC-7: maistro_design.skills.builtins
+  AC-8: maistro_design.engine
+  AC-9: maistro_design.engine
+  AC-10: maistro_design.engine
+  AC-11: maistro_design.engine
+  AC-12: maistro_design.engine
 layer: Ability
 owners:
   - '@BlakeMatthews-dev'
@@ -155,6 +168,7 @@ For `REACT_TSX` output: do **not** auto-create a canvas record. The skill mode d
 ### OutputFormat enum
 
 ```gherkin
+@AC-1
 Scenario: REACT_TSX value exists in OutputFormat
   When OutputFormat.REACT_TSX is accessed
   Then its value is "react_tsx"
@@ -164,18 +178,21 @@ Scenario: REACT_TSX value exists in OutputFormat
 ### Built-in skills declaration
 
 ```gherkin
+@AC-2
 Scenario: login-flow declares HTML and REACT_TSX output
   Given an InMemoryDesignSkillRegistry with load_builtins() called
   When registry.get("login-flow") is called
   Then skill.output_formats contains OutputFormat.HTML
   And skill.output_formats contains OutputFormat.REACT_TSX
 
+@AC-3
 Scenario: agent-browser declares HTML and REACT_TSX output
   Given an InMemoryDesignSkillRegistry with load_builtins() called
   When registry.get("agent-browser") is called
   Then skill.output_formats contains OutputFormat.HTML
   And skill.output_formats contains OutputFormat.REACT_TSX
 
+@AC-4
 Scenario: landing-page declares HTML, CSS, and REACT_TSX output
   Given an InMemoryDesignSkillRegistry with load_builtins() called
   When registry.get("landing-page") is called
@@ -183,6 +200,7 @@ Scenario: landing-page declares HTML, CSS, and REACT_TSX output
   And skill.output_formats contains OutputFormat.CSS
   And skill.output_formats contains OutputFormat.REACT_TSX
 
+@AC-5
 Scenario: email-template declares HTML and REACT_TSX output
   Given an InMemoryDesignSkillRegistry with load_builtins() called
   When registry.get("email-template") is called
@@ -193,6 +211,7 @@ Scenario: email-template declares HTML and REACT_TSX output
 ### System prompt content
 
 ```gherkin
+@AC-6
 Scenario: Prototype skills include "Code Output Instructions" in system_prompt
   Given an InMemoryDesignSkillRegistry with load_builtins() called
   When registry.get("login-flow").system_prompt is examined
@@ -201,6 +220,7 @@ Scenario: Prototype skills include "Code Output Instructions" in system_prompt
   And it contains guidance for Tailwind styling
   And it mentions "no external API calls"
 
+@AC-7
 Scenario: Template skills include "Code Output Instructions" in system_prompt
   Given registry.get("landing-page").system_prompt
   Then it contains the string "Code Output Instructions"
@@ -210,12 +230,14 @@ Scenario: Template skills include "Code Output Instructions" in system_prompt
 ### Trust tier inheritance
 
 ```gherkin
+@AC-8
 Scenario: REACT_TSX output inherits project trust tier
   Given a DesignEngine and a DiscoveryResult with trust_tier=T3
   When generate(discovery) is called for "login-flow" in REACT_TSX mode
   Then project.trust_tier == T3
   And project.outputs[0].trust_tier == T3
 
+@AC-9
 Scenario: Code output does not auto-upgrade trust
   Given a T2 skill and T0 design system
   And a DiscoveryResult with T3 responses
@@ -227,18 +249,21 @@ Scenario: Code output does not auto-upgrade trust
 ### Canvas behavior: no auto-creation for code
 
 ```gherkin
+@AC-10
 Scenario: PROTOTYPE mode does not auto-create canvas
   Given a DesignEngine with canvas_store provided
   And a DiscoveryResult for "login-flow" (PROTOTYPE mode)
   When generate(discovery) is called
   Then project.canvas_id is None (no auto-creation)
 
+@AC-11
 Scenario: TEMPLATE mode with code output still does not auto-create canvas
   Given a DesignEngine with canvas_store provided
   And a DiscoveryResult for "landing-page" (TEMPLATE mode)
   When generate(discovery) is called
   Then project.canvas_id is None (canvas creation is mode-driven, not format-driven)
 
+@AC-12
 Scenario: IMAGE mode still auto-creates canvas (existing behavior unchanged)
   Given a DesignEngine with canvas_store provided
   And a DiscoveryResult for "hero-image" (IMAGE mode)

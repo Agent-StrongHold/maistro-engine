@@ -28,6 +28,18 @@ contracts:
 tests: []
 source:
   - packages/maistro-core/src/maistro/capabilities
+ac-modules:
+  AC-1: maistro.capabilities.registry
+  AC-2: maistro.capabilities.registry
+  AC-3: maistro.capabilities.registry
+  AC-4: maistro.capabilities.governed_invocation
+  AC-5: maistro.capabilities.governed_invocation
+  AC-6: maistro.capabilities.providers.harness_stub
+  AC-7: maistro.credentials.store
+  AC-8: maistro.capabilities.registry
+  AC-9: maistro.runs.service
+  AC-10: maistro.capabilities.harness_manager
+  AC-11: maistro.capabilities.invocation_store
 layer: Ability
 owners:
   - '@BlakeMatthews-dev'
@@ -67,18 +79,103 @@ Invocation -> selected Provider
 
 ## Acceptance Criteria
 
-1. Two Providers implementing the same Capability can be registered without changing Capability identity.
-2. A Binding constrained to Provider A never falls back to Provider B even when B is healthy.
-3. A Binding allowing A/B selects an allowed healthy provider at Invocation time and records the selected provider.
-4. Removing permission for a Binding prevents Invocation even if the Provider remains registered/healthy.
-5. A tool schema exposed to a model routes its call through the same Binding authorization and produces an Invocation record.
-6. An HTTP/MCP adapter and at least one local function/tool adapter satisfy the same Invocation correlation contract.
-7. A credential-backed Invocation resolves a credential reference at execution and persisted Graph/Node/Invocation data contains no secret value.
-8. Provider circuit/health failure can cause allowed fallback without mutating Run identity.
-9. Agent-backed Binding creates a child Run with parent/Invocation correlation rather than an A2A-only task lifecycle.
-10. Harness session execution keeps its external handle while Run/NodeRun/Attempt remain authoritative lifecycle records.
-11. Observability can query Invocation by `workspace_id`, `run_id`, `node_run_id`, `attempt_id`, `binding_id` and `provider_id` where applicable.
-12. Architecture tests reject a provider/tool adapter that directly widens parent Binding permission.
+```gherkin
+Feature: Capability / Provider / Binding / Invocation
+
+  @AC-1
+  Scenario: Two Providers can serve one Capability
+    Given a Capability with Provider A registered
+    When Provider B is registered for the same Capability
+    Then both are registered
+    And the Capability identity is unchanged
+
+  @AC-2
+  Scenario: A constrained Binding never falls back
+    Given a Binding constrained to Provider A
+    When Provider A is unavailable and Provider B is healthy
+    Then the Invocation does not use Provider B
+
+  @AC-3
+  Scenario: A permissive Binding selects a healthy allowed Provider and records it
+    Given a Binding allowing Providers A and B
+    When an Invocation is made
+    Then an allowed healthy Provider is selected
+    And the Invocation record names the selected provider
+
+  @AC-4
+  Scenario: Losing permission stops Invocation
+    Given a Binding whose permission is removed
+    When an Invocation is attempted
+    Then it is refused
+    And the refusal stands even though the Provider is still registered and healthy
+
+  @AC-5
+  Scenario: A model tool call routes through the same Binding
+    Given a tool schema exposed to a model
+    When the model calls that tool
+    Then the call passes the same Binding authorization as any other Invocation
+    And an Invocation record is produced
+
+  @AC-6
+  Scenario Outline: Every adapter satisfies one correlation contract
+    Given a <adapter> adapter for a Provider
+    When it executes an Invocation
+    Then the Invocation carries the same correlation fields as any other adapter
+
+    Examples:
+      | adapter        |
+      | HTTP/MCP       |
+      | local function |
+
+  @AC-7
+  Scenario: Credentials are resolved at execution and never persisted
+    Given a Binding referencing a credential
+    When the Invocation executes
+    Then the credential is resolved from its reference at execution time
+    And no secret value appears in persisted Graph, Node, or Invocation data
+
+  @AC-8
+  Scenario: Provider health failure does not disturb Run identity
+    Given a Binding allowing fallback and a Provider whose circuit opens
+    When the Invocation falls back to an allowed Provider
+    Then the Run identity is unchanged
+
+  @AC-9
+  Scenario: An agent-backed Binding creates a correlated child Run
+    Given a Binding backed by an agent
+    When it is invoked
+    Then a child Run is created
+    And it correlates to the parent Run and the Invocation
+    And no A2A-only task lifecycle is used in its place
+
+  @AC-10
+  Scenario: A harness session keeps its handle without owning lifecycle
+    Given a harness session executing under an Invocation
+    When the session reports progress
+    Then it retains its external handle
+    And Run, NodeRun and Attempt remain the authoritative lifecycle records
+
+  @AC-11
+  Scenario Outline: Invocations are queryable by correlation id
+    Given recorded Invocations
+    When observability queries by <field>
+    Then the matching Invocations are returned
+
+    Examples:
+      | field        |
+      | workspace_id |
+      | run_id       |
+      | node_run_id  |
+      | attempt_id   |
+      | binding_id   |
+      | provider_id  |
+
+  @AC-12
+  Scenario: An adapter cannot widen its parent Binding's permission
+    Given the architecture tests
+    When a provider or tool adapter widens the permission of its parent Binding
+    Then the tests reject it
+```
 
 ## Non-goals
 

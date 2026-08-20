@@ -95,16 +95,28 @@ def parse_frontmatter(path: Path) -> dict | None:
     return yaml.safe_load(m.group(1))
 
 
-def has_acceptance_criteria(path: Path) -> bool:
-    text = path.read_text(encoding="utf-8")
-    idx = text.find("## Acceptance Criteria")
-    if idx == -1:
-        return False
-    after = text[idx + len("## Acceptance Criteria") :].strip()
-    # Non-empty if there's content before the next heading or EOF
+# Case-insensitive on purpose. 127 specs write "## Acceptance criteria" and 39
+# write "## Acceptance Criteria"; a case-sensitive `find` sees under a third of
+# the corpus and reports the rest as having no criteria at all. That single bug
+# accounted for 56 of this linter's 84 reported violations, every one of them
+# against a document whose AC section was fully populated. scripts/check-ac-state.py
+# carries the same note for the same reason.
+AC_HEADING_RE = re.compile(r"^##\s+acceptance\s+criteria.*$", re.IGNORECASE | re.MULTILINE)
+
+
+def _ac_section(text: str) -> str | None:
+    """The acceptance-criteria section body, or None when the heading is absent."""
+    m = AC_HEADING_RE.search(text)
+    if not m:
+        return None
+    after = text[m.end() :]
     next_heading = after.find("\n## ")
-    section = after[:next_heading] if next_heading != -1 else after
-    return len(section.strip()) > 0
+    return after[:next_heading] if next_heading != -1 else after
+
+
+def has_acceptance_criteria(path: Path) -> bool:
+    section = _ac_section(path.read_text(encoding="utf-8"))
+    return section is not None and len(section.strip()) > 0
 
 
 # ── Validation ─────────────────────────────────────────────────────────────
@@ -210,13 +222,9 @@ PARAM_RE = re.compile(r'pytest\.mark\.ac\(["\']([^"\']+)["\']\)')
 
 def extract_ac_ids(path: Path) -> list[str]:
     """Extract AC-N IDs from a spec's Acceptance Criteria section."""
-    text = path.read_text(encoding="utf-8")
-    idx = text.find("## Acceptance Criteria")
-    if idx == -1:
+    section = _ac_section(path.read_text(encoding="utf-8"))
+    if section is None:
         return []
-    after = text[idx:]
-    next_heading = after.find("\n## ", 1)
-    section = after[:next_heading] if next_heading != -1 else after
     fm = parse_frontmatter(path)
     spec_id = fm.get("id", "") if fm else ""
     ids = []

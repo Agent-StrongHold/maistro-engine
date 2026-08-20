@@ -130,12 +130,14 @@ This spec defines a **single Flutter codebase** in **`apps/maistro-gateway-node-
 
 ```gherkin
 Feature: Gateway discovery and manual connect
+  @AC-1
   Scenario: User connects with manual host and port
     Given the user entered a reachable gateway host and port 18789
     When they tap Connect
     Then a WebSocket connection is attempted with ws or wss according to toggle
     And pairing state is shown until approved or rejected
 
+  @AC-2
   Scenario: User selects discovered gateway on LAN
     Given at least one gateway advertisement is visible for the configured DNS-SD service type
     When the user selects a discovered row and taps Connect
@@ -144,6 +146,7 @@ Feature: Gateway discovery and manual connect
 
 ```gherkin
 Feature: Chat on session main
+  @AC-3
   Scenario: Send and receive on main session
     Given the node is paired and connected
     When the user sends a chat message

@@ -8,11 +8,12 @@ not human admin power.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from middleware.auth import require_admin
 from pydantic import BaseModel, ConfigDict, Field
-from state import get_state
 
 from maistro_turing.self_model import FACET_TO_TRAIT
+
+from ..middleware.auth import require_admin
+from ..state import get_state
 
 router = APIRouter(tags=["admin"])
 

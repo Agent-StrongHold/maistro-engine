@@ -19,6 +19,10 @@ contracts:
   - behavioral
 tests:
   - packages/maistro-core/tests/tasks/test_progress_webhook.py
+ac-modules:
+  AC-1: maistro.tasks.runner
+  AC-2: maistro.tasks.progress_webhook
+  AC-3: maistro.tasks.progress_webhook
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
@@ -86,17 +90,20 @@ Port the behavior into **`maistro-core`** as an optional, injectable **`Progress
 **Feature:** Operators can mirror task lifecycle to an external HTTP endpoint.
 
 ```gherkin
+@AC-1
 Scenario: Webhook disabled by default
   Given TASK_PROGRESS_WEBHOOK_URL is unset or empty
   When tasks run through TaskRunner
   Then no outbound HTTP requests are made for progress mirroring
 
+@AC-2
 Scenario: Webhook emits compatible JSON when enabled
   Given TASK_PROGRESS_WEBHOOK_URL points to a reachable HTTP server
   And a task transitions through planning and coding
   When the runner updates status and progress
   Then the server receives at least one POST whose JSON includes task_id, status, current_step, steps_total, steps_completed, details, and error fields
 
+@AC-3
 Scenario: Webhook failure does not fail the task
   Given TASK_PROGRESS_WEBHOOK_URL points to a blackhole or returns 500
   When a task completes successfully in Maistro

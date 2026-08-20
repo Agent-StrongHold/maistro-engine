@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from maistro.security.redact import redact
 
 
 class TestRedactNoneAndEmpty:
-    def test_none_returns_none(self):
-        assert redact(None) is None
+    @pytest.mark.ac("ADR-064/AC-41")
+    def test_none_returns_empty_string(self):
+        """None is outside the declared domain (`text: str`); redaction fails closed."""
+        assert redact(None) == ""
 
     @pytest.mark.ac("ADR-064/AC-40")
     def test_empty_string_returns_empty(self):
@@ -394,3 +398,66 @@ class TestNestedPatternSafety:
         assert "hbGciOiJSUzI1NiJ9" not in result
         assert "FAKEsig123" not in result
         assert "[REDACTED_AUTH_HEADER]" in result
+
+
+class TestRedactScaling:
+    """ADR-064/AC-36 — redaction must not rescan quadratically.
+
+    `redact()` runs on the logging hot path (`security/log_redaction.py`), so a
+    superlinear pattern is reachable from any untrusted string that reaches a
+    log line. Three patterns were quadratic: a 32 KB run of word characters
+    cost 5.4 s, 4.2 s of it inside the URL-userinfo regex alone. No adversary
+    is required — a base64 blob or a long traceback frame has the same shape.
+
+    Asserted as a *ratio* of two timings on the same machine, not a wall-clock
+    ceiling: a slow or contended runner scales both terms and cancels, so this
+    does not flake in CI the way an absolute bound does. Each timing is the
+    minimum of several runs — the sample least contaminated by scheduling
+    noise. Linear is ~4x for 4x input; quadratic is ~16x; 8.0 sits midway on a
+    log scale.
+    """
+
+    @staticmethod
+    def _best(text: str, repeats: int = 5) -> float:
+        best = float("inf")
+        for _ in range(repeats):
+            start = time.perf_counter()
+            redact(text)
+            best = min(best, time.perf_counter() - start)
+        return best
+
+    @pytest.mark.ac("ADR-064/AC-36")
+    @pytest.mark.parametrize(
+        ("label", "build"),
+        [
+            ("word run", lambda n: "a" * n),
+            ("underscore run", lambda n: "_" * n),
+            ("scheme without at", lambda n: "w://x:" + "a" * n),
+            ("query key repeat", lambda n: "?" + "key" * (n // 3)),
+            ("query apikey repeat", lambda n: "?" + "api_key" * (n // 7)),
+            ("begin blocks without end", lambda n: "-----BEGIN RSA PRIVATE KEY-----\n" * (n // 32)),
+        ],
+    )
+    def test_cost_grows_linearly_with_input(self, label, build):
+        ratio = self._best(build(16_000)) / self._best(build(4_000))
+        assert ratio < 8.0, f"{label}: 4x input cost {ratio:.1f}x time (linear=4, quadratic=16)"
+
+    @pytest.mark.ac("ADR-064/AC-35")
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "user signed in from 10.0.0.1 after retrying twice " * 20,
+            '{"level":"info","msg":"handled","dur_ms":12,"path":"/v1/chat"}' * 16,
+            "a" * 1024,
+            "payload=" + "TGl2ZSBsb25nIGFuZCBwcm9zcGVy" * 36,
+        ],
+        ids=["prose", "json", "word run", "base64"],
+    )
+    def test_one_kb_line_stays_well_under_the_budget(self, text):
+        """A 10 ms ceiling, ten times ADR-064's 1 ms budget.
+
+        Deliberately loose: the tight bound is machine-specific and would flake,
+        while an order-of-magnitude alarm still catches the 2.3 ms regression a
+        1 KB unbroken word run caused before the anchors went in.
+        """
+        assert self._best(text[:1024]) < 0.010

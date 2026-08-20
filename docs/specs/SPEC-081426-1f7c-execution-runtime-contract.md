@@ -29,6 +29,19 @@ contracts:
 tests: []
 source:
   - packages/maistro-core/src/maistro/runtime
+ac-modules:
+  AC-1: maistro.runtime.execution
+  AC-2: maistro.runtime.execution
+  AC-3: maistro.runtime.execution
+  AC-4: maistro.runtime.execution
+  AC-5: maistro.runtime.execution
+  AC-6: maistro.runtime.execution
+  AC-7: maistro.runtime.execution
+  AC-8: maistro.runtime.execution
+  AC-9: maistro.runtime.execution
+  AC-10: maistro.runtime.execution
+  AC-11: maistro.runtime.execution
+  AC-12: maistro.graph.durable_runs.attempt_executor
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
@@ -110,18 +123,86 @@ Runtime health/metrics MAY expose mechanics such as active executions, active sl
 
 ## Acceptance Criteria
 
-1. Two Attempts under one Run can execute concurrently with distinct execution IDs.
-2. Configured concurrency is never exceeded.
-3. A request that times out while waiting for the only slot raises the Runtime deadline signal and leaks no slot.
-4. An executor-raised `TimeoutError` increments failure, not Runtime-timeout, metrics.
-5. Cancellation while waiting for a slot leaves holder/waiter state and semaphore capacity consistent.
-6. Duplicate waiter/holder execution IDs are rejected without consuming capacity.
-7. Direct public slot acquisition records scheduling-wait and peak-concurrency metrics.
-8. Recursive event emission from the sink completes without deadlock and receives increasing sequence numbers.
-9. A sink exception does not permanently block later `emit()` calls.
-10. Runtime source has no dependency on Graph traversal or canonical Run persistence modules.
-11. The benchmark stops workload timing at execution completion even when lag sampling would otherwise continue.
-12. Runtime `execution_id` is wired from `Attempt.attempt_id` in the canonical Attempt execution service.
+```gherkin
+Feature: ExecutionRuntime contract
+
+  @AC-1
+  Scenario: Concurrent Attempts get distinct execution IDs
+    Given two Attempts under one Run
+    When both execute concurrently
+    Then each holds a distinct execution ID
+
+  @AC-2
+  Scenario: Configured concurrency is never exceeded
+    Given a Runtime configured for a fixed concurrency
+    When more executions are submitted than slots exist
+    Then the number running at once never exceeds the configured limit
+
+  @AC-3
+  Scenario: A deadline while queueing leaks no slot
+    Given a Runtime with one slot, already held
+    When a second request waits past its deadline
+    Then the Runtime deadline signal is raised
+    And capacity returns to its prior value with no slot leaked
+
+  @AC-4
+  Scenario: An executor TimeoutError is counted as a failure
+    Given an executor that raises TimeoutError inside its slot
+    When the execution completes
+    Then failure metrics increment
+    And Runtime-timeout metrics do not
+
+  @AC-5
+  Scenario: Cancellation while queueing leaves state consistent
+    Given a request waiting for a slot
+    When it is cancelled
+    Then holder and waiter state contain no trace of it
+    And semaphore capacity is unchanged
+
+  @AC-6
+  Scenario: A duplicate execution ID is rejected without consuming capacity
+    Given an execution ID already held or waiting
+    When the same ID is submitted again
+    Then it is rejected
+    And no capacity is consumed
+
+  @AC-7
+  Scenario: Direct slot acquisition still records metrics
+    Given the public slot-acquisition API
+    When a slot is acquired directly
+    Then scheduling-wait and peak-concurrency metrics are recorded
+
+  @AC-8
+  Scenario: Recursive emission from a sink does not deadlock
+    Given a sink that emits again while handling an event
+    When the nested emit occurs
+    Then both complete
+    And their sequence numbers increase
+
+  @AC-9
+  Scenario: A throwing sink does not block later emits
+    Given a sink that raises on one event
+    When a later event is emitted
+    Then that emit still reaches the sink
+
+  @AC-10
+  Scenario: Runtime does not depend on traversal or Run persistence
+    Given the Runtime source
+    When its imports are inspected
+    Then it imports neither Graph traversal nor canonical Run persistence modules
+
+  @AC-11
+  Scenario: The benchmark stops timing at execution completion
+    Given the Runtime benchmark with lag sampling active
+    When workload execution completes
+    Then reported workload timing ends there rather than continuing with the sampler
+
+  @AC-12
+  Scenario: Runtime execution_id comes from Attempt.attempt_id
+    Given the canonical Attempt execution service
+    When it invokes the Runtime
+    Then the Runtime execution_id is the Attempt's attempt_id
+```
 
 ## Non-goals
 

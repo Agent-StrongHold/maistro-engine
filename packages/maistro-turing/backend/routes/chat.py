@@ -21,11 +21,12 @@ from __future__ import annotations
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
-from middleware.auth import require_user
 from pydantic import BaseModel, ConfigDict
-from state import get_state
 
 from maistro_turing.runtime import TuringChatSession
+
+from ..middleware.auth import require_user
+from ..state import get_state
 
 router = APIRouter(tags=["chat"])
 
