@@ -12,7 +12,7 @@ def test_empty_message_rejected(authed_client):
 def test_chat_with_fake_provider(authed_client, monkeypatch):
     # The dev provider bridge has no LLM client; inject a fake so the real
     # TuringChatSession path runs end-to-end instead of returning 503.
-    from state import get_state
+    from ..state import get_state
 
     st = get_state()
     monkeypatch.setattr(st.provider, "complete", lambda *a, **k: "hello from turing", raising=True)

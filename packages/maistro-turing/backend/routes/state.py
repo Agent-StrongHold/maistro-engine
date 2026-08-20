@@ -7,11 +7,12 @@ Wired to the real maistro_turing.self_model types and compute_drives().
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from middleware.auth import require_user
-from state import SELF_ID, get_state
 
 from maistro_turing.producers import compute_drives
 from maistro_turing.self_model import CANONICAL_FACETS
+
+from ..middleware.auth import require_user
+from ..state import SELF_ID, get_state
 
 router = APIRouter(tags=["state"])
 

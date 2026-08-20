@@ -11,11 +11,12 @@ narrowly-scoped service key (turing:vault_write) to publish a new artifact.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from middleware.auth import require_turing_scope, require_user_or_turing_scope
 from pydantic import BaseModel, ConfigDict
-from state import ARTIFACT_KINDS, get_state
 
 from maistro.auth import Scope
+
+from ..middleware.auth import require_turing_scope, require_user_or_turing_scope
+from ..state import ARTIFACT_KINDS, get_state
 
 router = APIRouter(tags=["feed"])
 

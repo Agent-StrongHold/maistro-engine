@@ -168,7 +168,12 @@ class CredentialPool:
             per_key=[
                 {
                     "key_id": e.key_id,
-                    "available": e.is_available,
+                    # `is_available`, matching the CredentialRecord property it
+                    # copies — every other key in this dict mirrors its source
+                    # attribute exactly, and ADR-063 declares per_key as
+                    # list[CredentialRecord]. The bare `available` was a slip
+                    # introduced while flattening the record into a dict.
+                    "is_available": e.is_available,
                     "blocked": e.blocked,
                     "use_count": e.use_count,
                     "error_count": e.error_count,

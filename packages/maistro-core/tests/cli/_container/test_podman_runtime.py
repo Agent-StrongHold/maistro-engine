@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from unittest.mock import MagicMock
 
 import pytest
 
 from maistro.cli._container.podman_runtime import PodmanRuntime
+
+# Captured at import: these tests assert DOCKER_HOST is *unchanged*, so they
+# must compare against whatever the environment actually had, not against None.
+_DOCKER_HOST_BEFORE = os.environ.get("DOCKER_HOST")
 
 
 class TestFindSocket:
@@ -66,9 +72,27 @@ class TestIsAvailable:
         runtime._client = fake_client
         result = runtime.is_available()
         assert result is True
-        import os
+        assert runtime._socket == "/run/podman/podman.sock"
+        # An availability probe must not repoint every other Docker consumer in
+        # the process. This used to assert the opposite — that `is_available()`
+        # wrote DOCKER_HOST — which is how the leak survived: the test codified
+        # it. Leaking it sent maistro.tools.sandbox.docker's `docker` CLI child
+        # at Podman's socket, silently scoring sandboxed benchmarks as failures.
+        assert os.environ.get("DOCKER_HOST") == _DOCKER_HOST_BEFORE
 
-        assert os.environ["DOCKER_HOST"] == "unix:///run/podman/podman.sock"
+    def test_client_binds_to_socket_without_touching_environ(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        runtime = PodmanRuntime()
+        monkeypatch.setattr(
+            PodmanRuntime, "_find_socket", staticmethod(lambda: "/run/podman/podman.sock")
+        )
+        fake_docker = MagicMock()
+        monkeypatch.setitem(sys.modules, "docker", fake_docker)
+
+        assert runtime.client is fake_docker.DockerClient.return_value
+        fake_docker.DockerClient.assert_called_once_with(base_url="unix:///run/podman/podman.sock")
+        assert os.environ.get("DOCKER_HOST") == _DOCKER_HOST_BEFORE
 
     def test_false_when_super_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         runtime = PodmanRuntime()

@@ -11,11 +11,12 @@ Turing's own producers to publish artifacts.
 
 from __future__ import annotations
 
-from config import build_registry, cors_origins
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from middleware.auth import TuringAuthMiddleware
-from routes import admin, auth, chat, feed, health, state
+
+from .config import build_registry, cors_origins
+from .middleware.auth import TuringAuthMiddleware
+from .routes import admin, auth, chat, feed, health, state
 
 
 def create_app() -> FastAPI:

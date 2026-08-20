@@ -255,18 +255,14 @@ maistro/credentials/
 ### Feature: Pool selection strategies
 
 > **Measurement note (2026-08-19).** These 32 scenarios are tagged `@AC-N` and
-> measured by `scripts/check-ac-state.py`. Twenty-eight are bound to passing
-> tests. Four stay `declared`:
+> measured by `scripts/check-ac-state.py`. Twenty-nine are bound to passing
+> tests. Three stay `declared`:
 >
 > - **AC-15, AC-16, AC-19** — the 402/429 paths *through a request*. The
 >   cooldown mechanics they rely on are proven (`record_failure` with a billing
 >   cooldown, single-key exhaustion), but no test drives the specific
 >   request-execution sequence each scenario describes, so binding one would
 >   claim more than it shows.
-> - **AC-29** — requires each per-key stats record to include `is_available`.
->   The implementation emits `available`. A one-word contract drift, recorded
->   rather than papered over: either the scenario or `PoolStats.per_key` has to
->   move.
 >
 > Every bound criterion caps at `passing`, not `reachable`: both
 > `maistro.credentials.pool` and `maistro.credentials.rotation` are in

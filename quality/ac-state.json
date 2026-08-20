@@ -15,7 +15,7 @@
     "specs_awaiting_retrofit": 139,
     "criteria_declared": 462,
     "criteria_annotated": 191,
-    "markers_found": 169,
+    "markers_found": 171,
     "markers_without_criterion": 2,
     "criteria_claimed_but_unproven": 0,
     "gherkin_criteria": 215,
@@ -8943,8 +8943,10 @@
         {
           "id": "ADR-063/AC-29",
           "module": "maistro.credentials.pool",
-          "covered_by": [],
-          "rung": "declared"
+          "covered_by": [
+            "packages/maistro-core/tests/credentials/test_pool.py"
+          ],
+          "rung": "passing"
         },
         {
           "id": "ADR-063/AC-30",
@@ -9307,8 +9309,10 @@
         {
           "id": "ADR-064/AC-41",
           "module": "maistro.security.redact",
-          "covered_by": [],
-          "rung": "declared"
+          "covered_by": [
+            "packages/maistro-core/tests/security/test_redact.py"
+          ],
+          "rung": "reachable"
         },
         {
           "id": "ADR-064/AC-42",

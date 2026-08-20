@@ -90,7 +90,7 @@ class TuringAuthMiddleware(BaseHTTPMiddleware):
                 session_id = auth[7:]
         if not session_id:
             return None
-        from routes.auth import get_current_user
+        from ..routes.auth import get_current_user
 
         return get_current_user(session_id)
 
