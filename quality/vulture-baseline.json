@@ -95,8 +95,8 @@
       "path_regex": "packages/maistro-core/src/maistro/.*\\.py",
       "message_regex": "unused (function|class|method|variable|attribute)",
       "rationale": "maistro-core exports package APIs consumed by downstream products and sibling repos, so package-local vulture cannot distinguish all public consumers.",
-      "finding_count": 655,
-      "finding_sha256": "b724e94d51bdeddedfbb71e858f85dc3bd33ee0ae0baca73734b19189b8e6aa6"
+      "finding_count": 650,
+      "finding_sha256": "7be49f62eaa92de7ee2c1ae3d6a8b12894980b8af4355e96c6edfd2d1ccdc4ff"
     },
     {
       "id": "pytest-discovered-test-surface",
