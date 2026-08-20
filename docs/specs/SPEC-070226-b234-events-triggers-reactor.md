@@ -24,6 +24,11 @@ tests:
   - packages/maistro-core/tests/events/test_trigger_store.py
   - packages/maistro-core/tests/events/test_invocations.py
   - packages/maistro-core/tests/events/test_processing.py
+ac-modules:
+  AC-1: maistro.events.durable_log
+  AC-2: maistro.events.trigger_store
+  AC-3: maistro.events.invocations
+  AC-4: maistro.events.processing
 layer: Observability
 owners:
   - '@BlakeMatthews-dev'
@@ -196,14 +201,61 @@ The `(trigger_id, event_id)` unique key ensures a handler is invoked at most onc
 
 ## Acceptance criteria
 
-- [x] Every event emitted is persisted to event_log (property: no lost events).
-- [x] Triggers match event patterns correctly ("agent.*" matches "agent.created" but not "task.created").
-- [x] Handler is invoked exactly once per event (idempotency test: simulate crash, restart, confirm
-      no duplicate invocations).
-- [x] Failed handler is retried up to 3 times (backoff via reactor tick cadence, not in-loop sleep).
-- [ ] Event query API (GET /events?event_type=...&since=...) returns paginated results.
-      (Store-level `EventLogStore.query()` supports this; the HTTP route belongs in
-      maistro-server / hive-conductor and is not wired yet.)
+```gherkin
+Feature: Durable event log with idempotent replay
+
+  @AC-1
+  Scenario Outline: Every emitted event is persisted before any handler sees it
+    Given an event log backed by <backend>
+    When a sequence of events is emitted
+    Then every event is readable from the log
+    And each carries an append-assigned id greater than the one before it
+    And reads return them in ascending id order
+
+    Examples:
+      | backend   |
+      | in-memory |
+      | sqlite    |
+
+  @AC-2
+  Scenario Outline: Trigger patterns match on segments, not substrings
+    Given a trigger registered for pattern "<pattern>"
+    When an event of type "<event_type>" is emitted
+    Then the trigger <outcome>
+
+    Examples:
+      | pattern | event_type        | outcome        |
+      | agent.* | agent.created     | fires          |
+      | agent.* | task.created      | does not fire  |
+      | agent.* | agent.sub.created | does not fire  |
+
+  @AC-3
+  Scenario: A handler is invoked exactly once per event across a crash
+    Given a trigger whose handler has claimed an invocation for an event
+    When the process dies mid-handler and the processor runs again
+    Then the handler is not invoked a second time for that event
+    And the invocation record still names its terminal status
+
+  @AC-4
+  Scenario: A failing handler is retried three times and then given up on
+    Given a handler that raises on every call
+    When the processor runs until the invocation settles
+    Then the handler is called no more than 4 times in total
+    And the invocation ends in a terminal failed status
+    And the backoff is paced by reactor ticks rather than an in-loop sleep
+
+  @AC-5
+  Scenario: Events are queryable over HTTP
+    Given events in the log spanning several types and times
+    When a client requests GET /events with event_type and since filters
+    Then it receives the matching events, paginated
+```
+
+> **AC-5 is deliberately unproven.** `EventLogStore.query()` supports this at
+> store level; the HTTP route belongs in maistro-server / hive-conductor and is
+> not wired. No test claims it, so the ladder reports it as `declared` and holds
+> this spec's tier there — which is the accurate reading, not a gap in the
+> measurement.
 
 ## Testing
 

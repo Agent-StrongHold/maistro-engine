@@ -55,11 +55,91 @@ later regression.
 | benchmark provenance | floor | pinned digests | a vendored IFEval/BFCL grader or corpus changing unnoticed |
 | architecture fitness | floor | zero violations | a forbidden cross-layer dependency |
 | Hypothesis conformance | floor | zero falsifying examples | a property violation in `formal/` |
+| acceptance-criterion state | report only | `quality/ac-state.json` | nothing yet — see below |
+| Gherkin well-formedness | floor | zero parse failures | an acceptance-criteria block the Gherkin grammar rejects |
 
 Vulture is gated twice on purpose. `quality.yml` keeps a cheap total-count
 ceiling; `vulture-ratchet.yml` pins each rule's exact finding set by count and
 digest, which is what catches a same-count substitution — one finding fixed and
 a different one introduced under the same rule, invisible to a count alone.
+
+## Acceptance-criterion state
+
+`scripts/check-ac-state.py` measures what the other gates cannot: whether a
+document's *status* is true. Everything above checks code. A front-matter
+`status: Implemented` is checked by nobody, and was wrong on six consecutive
+ADRs for months (#357, #363), because one person can assert it about a whole
+document at once.
+
+The unit of truth is pushed down to the individual acceptance criterion, where
+it can be measured. Each criterion carries an `**AC-N**` id, tests claim it with
+`@pytest.mark.ac("SPEC-xxx/AC-n")`, and the spec's `ac-modules` front-matter maps
+it to the module it asserts about. From that the script climbs a ladder:
+
+| Rung | Means |
+|---|---|
+| `declared` | the spec states it, with an id |
+| `covered` | some test claims it |
+| `passing` | that test passes |
+| `reachable` | the module it asserts about is reachable from a real entry point |
+
+The last rung is the one that matters and the one most easily left off. A green
+test proves the code works; it does not prove anything runs it — `tick_decay`
+(#344), `elevation_store` (#346) and the whole security pipeline (#350) were all
+green, all tested, and all unreachable. A ladder stopping at `passing` would
+reproduce that lie one level up, having spent the effort to get back here.
+
+A document's **tier** is the highest rung *every* one of its criteria has
+reached, so one lagging criterion holds the whole spec down. That is strict on
+purpose, and it is why the report also carries the per-rung distribution: a tier
+that reads `declared` does not say whether one criterion is missing or forty.
+Spec tiers fold up to ADRs through each spec's `implements:`.
+
+Two counts are reported separately and must not be merged:
+
+- **contradicted** — the document claims `Implemented` and *has* measurable
+  criteria that fall short. Its own artefacts refute it.
+- **unverifiable** — the document claims `Implemented` and has nothing to
+  measure yet. Unproven, not refuted.
+
+## Criteria are written in Gherkin
+
+Not a new convention — the existing one, finally enforced. 11 documents already
+carried 224 `Scenario:` blocks in ```gherkin fences, and `pytest-bdd` was
+already a declared dependency of hive-conductor. Nothing read any of it: no step
+definitions, no `.feature` files, no runner. Another built-but-never-wired
+subsystem, this one inside the acceptance-criteria machinery itself.
+
+So criteria are Gherkin, parsed with the real grammar rather than a regex —
+the point of adopting a standard is that its own tooling decides what is
+well-formed. That buys three things a prose bullet does not:
+
+- **A structure that can be checked.** A `Scenario` with no `Then` states no
+  observable outcome, so nothing about it is falsifiable. The report counts
+  those separately from criteria that merely lack a test.
+- **Tables instead of repetition.** `Scenario Outline` with an `Examples` table
+  states a rule and its cases once. Four near-identical prose bullets become one
+  criterion with four rows.
+- **A path to executable criteria.** Valid Gherkin can later be bound with
+  `pytest-bdd` without rewriting anything. That is deliberately *not* done here:
+  step definitions are a large glue layer, the repo has 8,700 plain pytest
+  tests, and the marker binding already works. The option is kept open, not
+  taken.
+
+A criterion's identity is a Gherkin **tag** — `@AC-3` above the scenario — never
+the scenario's name. Names get reworded, and a reworded name would silently
+break the binding to the test claiming it: the criterion would drop back to
+`declared` with nothing saying why. One criterion may carry several scenarios.
+
+Bullet-form `**AC-N**` criteria still count while the corpus converges, and the
+report says which form each spec uses so the progress is visible rather than
+normalised away.
+
+Report-only for now: nothing fails a build, and no status is rewritten. Most of
+the corpus is still prose-only, so the honest first pass is finding out what is
+true. Run it with `--run-tests` — without that flag the `passing` rung is never
+settled and every criterion stops at `covered`, which the report says on its
+first line rather than leaving you to infer.
 
 Security scanning (bandit, semgrep, gitleaks), dependency audit (pip-audit),
 container scan/SBOM/cosign, and mutation testing run in their own workflows —
@@ -96,6 +176,7 @@ uv run python scripts/check-doc-links.py
 uv run python scripts/bump_version.py --check
 uv run python scripts/check-vulture-baseline.py packages/*/src \
   --min-confidence 60 --exclude '*/third_party/*'
+uv run python scripts/check-ac-state.py --run-tests   # report only
 ```
 
 `scripts/check-suite-inventory.py --update` rewrites the inventory from an

@@ -31,6 +31,27 @@ history:
 
 # ADR-069: Code Registry
 
+> **Convergence note (2026-08-19).** This ADR is marked `Implemented`, but the
+> code implementing it has no path from any process entry point — see
+> [#363](https://github.com/Agent-StrongHold/maistro-engine/issues/363). That
+> is not an oversight:
+> [SPEC-257](../specs/SPEC-257-code-registry-resolve-core.md) scoped only the
+> pure, testable core — the entry model, signature verification and
+> `resolve()` contract — and put the microVM execution harness,
+> Sentinel/Warden routing and resource caps in Non-goals, because they need a
+> real microVM runtime plus ADR-054 sandbox tiers and ADR-068 authorization,
+> none of which exist yet. The registry is reachable-by-design only from the
+> `invoke()` that was never built.
+>
+> The status is knowingly left unchanged rather than corrected. The capability
+> is still wanted, so `Deprecated` would be false; `Superseded` requires a
+> `superseded-by` and nothing replaces this. Both are terminal, so choosing
+> wrong forecloses the other, and ADR-097's forward-only lifecycle offers no
+> transition back from `Implemented` for an ADR marked so optimistically.
+> Correcting it truthfully needs either the missing substrate or a lifecycle
+> that can express "specified, partially built, blocked".
+
+
 **Status:** Proposed
 **Date:** 2026-05-30
 **Resolves:** the dangling "code registry" abstraction referenced by ADR-050, ADR-051,

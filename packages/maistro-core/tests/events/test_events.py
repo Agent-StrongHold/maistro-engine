@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from maistro.events.bus import (
     Event,
     EventBus,
@@ -92,6 +94,7 @@ class TestEventBus:
         fired = await bus.emit(Event(event_type="test"))
         assert fired == []
 
+    @pytest.mark.ac("SPEC-228/AC-4")
     async def test_emit_fires_trigger(self):
         bus = EventBus()
         results = []
@@ -144,6 +147,7 @@ class TestEventBus:
         bus.remove_trigger("abc")
         assert bus.list_triggers() == []
 
+    @pytest.mark.ac("SPEC-228/AC-4")
     async def test_subscriber(self):
         bus = EventBus()
         received = []
@@ -153,6 +157,7 @@ class TestEventBus:
 
 
 class TestEmitRobustness:
+    @pytest.mark.ac("SPEC-228/AC-4")
     async def test_bad_payload_trigger_does_not_stop_other_triggers(self):
         # A numeric-comparison condition against a non-numeric payload must not
         # abort the whole emit loop; later triggers/subscribers must still run.

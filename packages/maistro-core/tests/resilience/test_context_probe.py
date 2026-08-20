@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from maistro.resilience.context_probe import PROBE_SIZES, ContextProbe
 
 
@@ -8,6 +10,7 @@ class TestGetContextLength:
         probe = ContextProbe()
         assert probe.get_context_length("unknown-model") is None
 
+    @pytest.mark.ac("ADR-066/AC-38")
     def test_known_model_returns_length(self):
         probe = ContextProbe()
         probe.set_known_length("gpt-4", 128000)
@@ -38,6 +41,7 @@ class TestProbeNextSize:
         probe = ContextProbe()
         assert probe.probe_next_size("new-model") == 4096
 
+    @pytest.mark.ac("ADR-066/AC-38")
     def test_returns_none_when_cached(self):
         probe = ContextProbe()
         probe.set_known_length("model", 8192)
@@ -83,6 +87,7 @@ class TestRecordSuccess:
         assert probe._probe_index["model"] == 1
         assert probe.get_context_length("model") is None
 
+    @pytest.mark.ac("ADR-066/AC-39")
     def test_advances_through_tiers(self):
         probe = ContextProbe()
         probe.record_success("model", 4096)
@@ -91,6 +96,7 @@ class TestRecordSuccess:
         assert probe._probe_index["model"] == 3
         assert probe.get_context_length("model") is None
 
+    @pytest.mark.ac("ADR-066/AC-39")
     def test_caches_on_final_tier(self):
         probe = ContextProbe()
         for size in PROBE_SIZES[:-1]:

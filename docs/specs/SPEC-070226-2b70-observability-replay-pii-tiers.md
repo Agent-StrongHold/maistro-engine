@@ -26,6 +26,15 @@ tests:
   - packages/maistro-core/tests/observability/test_tiers.py
   - packages/maistro-core/tests/observability/test_replay.py
   - packages/maistro-core/tests/observability/test_proxy.py
+ac-modules:
+  AC-1: maistro.observability.proxy
+  AC-2: maistro.observability.replay
+  AC-3: maistro.observability.proxy
+  AC-4: maistro.observability.replay
+  AC-5: maistro.observability.replay
+  AC-6: maistro.observability.replay
+  AC-7: maistro.observability.tiers
+  AC-9: maistro.observability.proxy
 layer: Observability
 owners:
   - '@BlakeMatthews-dev'
@@ -146,23 +155,106 @@ code calls `litellm` directly, so the grep rule can be added to ci.yml at wiring
 
 ## Acceptance criteria
 
-- [x] Every LLM/tool call through the proxies writes a `ReplayEvent` carrying the active ADR-037
-      `trace_id`/`span_id` and a per-trace monotonic `seq`.
-- [x] `replay(trace_id)` yields events in original `seq` order (property test).
-- [x] Re-running an orchestration path in replay mode never invokes the real LLM or tool
-      (asserted via a poisoned real client that raises if touched).
-- [x] A divergent request during replay raises `ReplayDivergenceError` naming the seq and hash diff.
-- [x] `sensitive`-tagged payloads are only readable via the scoped read path; each read writes an
-      access-audit row.
-- [x] `secret`-tagged calls persist hash + metadata only — no payload bytes in any table (property
-      test over generated payloads).
-- [x] PII detector flags a `normal` event containing an email/card/secret-shaped token: raises in
-      dev mode, redacts + emits `pii.unexpected_match` in prod mode.
-- [ ] Direct `litellm` invocation in engine code fails CI; an agent wired with a non-proxy client
-      fails registration. *(Deferred to container/agent-factory wiring + ci.yml grep rule — see
-      wiring status above.)*
-- [x] Hot path is never blocked by recording for `normal` tier (buffer-overflow test drops records
-      and increments `observability.record_dropped`).
+```gherkin
+Feature: Replayable LLM/tool proxies and PII sensitivity-tier routing
+
+  @AC-1
+  Scenario: Recorded calls carry trace context and one shared sequence
+    Given an LLM proxy and a tool proxy sharing a trace
+    When calls are made alternately through both
+    Then every ReplayEvent carries the active trace_id and span_id
+    And the seq numbers are monotonic across both proxies, not per-proxy
+    And each event's request hash is a canonical sha256 of the request
+
+  @AC-2
+  Scenario: Replay yields events in their original order
+    Given a recorded trace of arbitrarily interleaved calls
+    When the trace is replayed
+    Then the events are yielded in original seq order
+
+  @AC-3
+  Scenario: Replay never reaches the real client
+    Given a recorded trace and a real client that raises if called
+    When the orchestration path is re-run in replay mode
+    Then the recorded responses are served
+    And the real client is never invoked
+
+  @AC-4
+  Scenario Outline: A replay that stops matching its recording raises
+    Given a recorded trace
+    When the replayed call <divergence>
+    Then ReplayDivergenceError is raised naming the seq and both hashes
+
+    Examples:
+      | divergence                       |
+      | sends a changed request          |
+      | swaps the call kind              |
+      | runs past the end of the trace   |
+
+  @AC-5
+  Scenario: Sensitive payloads are readable only through the audited path
+    Given a call recorded at the sensitive tier
+    When its payload is read through the scoped read path
+    Then the payload is returned
+    And an AccessAuditRecord is written for that read
+    But reading a sensitive payload that does not exist raises
+
+  @AC-6
+  Scenario: Secret payloads persist as hash and metadata only
+    Given a call recorded at the secret tier
+    When the stored record is examined for any generated payload
+    Then no payload bytes appear in any stored field
+    And replaying it raises ReplayPayloadUnavailableError
+
+  @AC-7
+  Scenario Outline: PII in a normal-tier payload is caught
+    Given the PII detector in <mode> mode
+    When a normal-tier event containing <token> is recorded
+    Then it <behaviour>
+
+    Examples:
+      | mode | token               | behaviour                                          |
+      | dev  | an email address    | raises UnexpectedPIIError                          |
+      | dev  | a secret-shaped key | raises UnexpectedPIIError                          |
+      | prod | an email address    | redacts a copy and emits pii.unexpected_match      |
+
+  @AC-7
+  Scenario: The detector leaves the caller's object alone and skips sealed tiers
+    Given the PII detector in prod mode
+    When a normal-tier payload containing an email is recorded
+    Then the caller's own object is not mutated
+    And a sensitive-tier payload is not scanned at all, being already sealed
+
+  @AC-8
+  Scenario: Non-proxy LLM access is impossible
+    Given engine code that calls litellm directly
+    When CI runs
+    Then the build fails
+    And an agent wired with a non-proxy client fails registration
+
+  @AC-9
+  Scenario Outline: Recording never blocks the hot path
+    Given a record writer whose buffer is full
+    When a <tier>-tier record is submitted
+    Then it <behaviour>
+
+    Examples:
+      | tier      | behaviour                                                  |
+      | normal    | is dropped, incrementing observability.record_dropped      |
+      | sensitive | raises rather than being silently dropped                  |
+      | secret    | raises rather than being silently dropped                  |
+
+  @AC-9
+  Scenario: Submission returns without waiting for the write
+    Given a record writer with a slow backing store
+    When a normal-tier record is submitted
+    Then submission returns without awaiting the write
+    And a later flush persists the buffered events
+```
+
+> **AC-8 is deliberately unproven.** It needs container/agent-factory wiring
+> plus a ci.yml grep rule — see the wiring status above. No test claims it, so
+> the ladder reports it as `declared` and holds this spec's tier there.
 
 ## Testing
 

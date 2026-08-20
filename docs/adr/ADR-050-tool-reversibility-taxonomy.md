@@ -30,6 +30,30 @@ history:
 
 # ADR-050: Tool reversibility taxonomy and compensator contract
 
+> **Convergence note (2026-08-19).** This ADR is marked `Implemented` over
+> code with no path from any process entry point — see
+> [#363](https://github.com/Agent-StrongHold/maistro-engine/issues/363). The
+> status is knowingly left unchanged rather than corrected, because neither
+> available transition is right yet. Tool reversibility belongs on the Binding
+> → Invocation path.
+>
+> The capability is still wanted, so `Deprecated` would be false. `Superseded`
+> is the right eventual transition — the boundary that replaces this is
+> specified by
+> [ADR-081226-6b46](ADR-081226-6b46-capability-provider-binding-invocation.md),
+> which puts policy narrowing on the Binding and records policy decisions on
+> the Invocation — but that ADR does not specify the durable approval
+> mechanism that actually shipped across
+> [#430](https://github.com/Agent-StrongHold/maistro-engine/pull/430) through
+> [#433](https://github.com/Agent-StrongHold/maistro-engine/pull/433) and
+> [#467](https://github.com/Agent-StrongHold/maistro-engine/pull/467), and
+> [SPEC-081226-6e34](../specs/SPEC-081226-6e34-hierarchical-permissions.md)
+> explicitly puts approval out of scope. Pointing `superseded-by` at an ADR
+> that does not cover the replacing mechanism would repeat the fabrication
+> this correction exists to remove. Both target states are terminal, so the
+> supersession waits for an ADR that genuinely covers it.
+
+
 ## Context
 
 `security/sentinel` enforces tool-call policy today; ADR-038 ships retry / circuit-breaker / fallback / idempotency-key contract. Neither classifies tool calls by side-effect nature. Without a taxonomy, every tool's failure-mode and rollback story is bespoke and substrate cannot reason about which calls are safe to retry, which need approval (ADR-051), and which need a compensator on rollback.

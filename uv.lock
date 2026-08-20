@@ -2378,6 +2378,7 @@ browser = [
 dev = [
     { name = "aiosqlite" },
     { name = "cosmic-ray" },
+    { name = "gherkin-official" },
     { name = "google-re2" },
     { name = "hypothesis" },
     { name = "mypy" },
@@ -2400,6 +2401,7 @@ scheduling = [
 dev = [
     { name = "aiosqlite" },
     { name = "cosmic-ray" },
+    { name = "gherkin-official" },
     { name = "hypothesis" },
     { name = "mypy" },
     { name = "pytest" },
@@ -2423,6 +2425,7 @@ requires-dist = [
     { name = "cosmic-ray", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "fastmcp", specifier = ">=2.0" },
+    { name = "gherkin-official", marker = "extra == 'dev'", specifier = ">=29.0" },
     { name = "google-re2", marker = "extra == 'dev'", specifier = ">=1.1" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.0" },
@@ -2457,6 +2460,7 @@ provides-extras = ["dev", "browser", "scheduling", "bootstrap"]
 dev = [
     { name = "aiosqlite", specifier = ">=0.20" },
     { name = "cosmic-ray", specifier = ">=8.0.0" },
+    { name = "gherkin-official", specifier = ">=29.0" },
     { name = "hypothesis", specifier = ">=6.0" },
     { name = "mypy", specifier = ">=1.14" },
     { name = "pytest", specifier = ">=8.3" },

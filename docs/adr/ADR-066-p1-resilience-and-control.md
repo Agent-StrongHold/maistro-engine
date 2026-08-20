@@ -16,6 +16,52 @@ blocked-by: []
 contracts:
   - behavioral
 tests: []
+ac-modules:
+  AC-1: maistro.graph.depth
+  AC-2: maistro.graph.depth
+  AC-3: maistro.graph.depth
+  AC-4: maistro.graph.depth
+  AC-5: maistro.graph.depth
+  AC-6: maistro.graph.depth
+  AC-7: maistro.graph.depth
+  AC-8: maistro.graph.depth
+  AC-9: maistro.graph.compaction
+  AC-10: maistro.graph.compaction
+  AC-11: maistro.graph.compaction
+  AC-12: maistro.graph.compaction
+  AC-13: maistro.graph.compaction
+  AC-14: maistro.graph.compaction
+  AC-15: maistro.graph.compaction
+  AC-16: maistro.graph.steering
+  AC-17: maistro.graph.steering
+  AC-18: maistro.graph.steering
+  AC-19: maistro.graph.steering
+  AC-20: maistro.graph.steering
+  AC-21: maistro.graph.steering
+  AC-22: maistro.graph.steering
+  AC-23: maistro.resilience.rate_coordination
+  AC-24: maistro.resilience.rate_coordination
+  AC-25: maistro.resilience.rate_coordination
+  AC-26: maistro.resilience.rate_coordination
+  AC-27: maistro.resilience.rate_coordination
+  AC-28: maistro.resilience.rate_coordination
+  AC-29: maistro.resilience.rate_coordination
+  AC-30: maistro.resilience.rate_coordination
+  AC-31: maistro.resilience.retry_policy
+  AC-32: maistro.resilience.retry_policy
+  AC-33: maistro.resilience.retry_policy
+  AC-34: maistro.resilience.retry_policy
+  AC-35: maistro.resilience.retry_policy
+  AC-36: maistro.resilience.retry_policy
+  AC-37: maistro.resilience.retry_policy
+  AC-38: maistro.resilience.context_probe
+  AC-39: maistro.resilience.context_probe
+  AC-40: maistro.resilience.context_probe
+  AC-41: maistro.resilience.context_probe
+  AC-42: maistro.resilience.context_probe
+  AC-43: maistro.resilience.context_probe
+  AC-44: maistro.resilience.context_probe
+  AC-45: maistro.resilience.context_probe
 layer: Reliability
 owners:
   - '@BlakeMatthews-dev'
@@ -765,6 +811,27 @@ maistro/
 
 ## Gherkin Acceptance Criteria
 
+> **Measurement note (2026-08-19).** These 45 scenarios are tagged `@AC-N` and
+> measured by `scripts/check-ac-state.py`. Sixteen are bound to existing tests
+> and pass; the other twenty-nine describe design this ADR proposes that is not
+> yet built to this contract (`control_scope`, `DepthDescriptor`,
+> `CompactionResult` with byte accounting, steering timestamps and role
+> scoping, `check_before_call` wait-seconds, `limit_type`, idempotency-keyed
+> and custom retry policies, the `llm_call` stage, error-parse and
+> binary-search probing, and every executor-integration clause). A test is
+> bound only when it proves *every* behavioural clause of its scenario —
+> partial proof stays `declared`, because a binding that claims more than its
+> test shows is the falsehood this measurement exists to end.
+>
+> Every bound criterion caps at `passing`, not `reachable`, and that is the
+> load-bearing finding: all six implementing modules — `graph.depth`,
+> `graph.compaction`, `graph.steering`, `resilience.rate_coordination`,
+> `resilience.retry_policy`, `resilience.context_probe` — sit in
+> `quality/reachability-baseline.json`. The whole P1 resilience layer is
+> built and green and wired into no entry point. The executor runs without
+> depth enforcement, without compaction, without steering, without rate
+> coordination, without stage-aware retries, and without context probing.
+
 ### Feature: IMP-023 — Hierarchical Depth/Role System
 
 ```gherkin
@@ -777,6 +844,7 @@ Feature: Hierarchical depth/role system for subgraphs
     Given a GraphConfig with max_depth set to 3
     And a root GraphRun at depth 0
 
+  @AC-1
   Scenario: Root role assigned at depth 0
     Given a GraphRun at depth 0
     When the depth role is computed
@@ -784,6 +852,7 @@ Feature: Hierarchical depth/role system for subgraphs
     And can_spawn shall be true
     And control_scope shall be "full"
 
+  @AC-2
   Scenario: Orchestrator role assigned at intermediate depth
     Given a GraphRun at depth 1
     When the depth role is computed
@@ -791,6 +860,7 @@ Feature: Hierarchical depth/role system for subgraphs
     And can_spawn shall be true
     And control_scope shall be "subtree"
 
+  @AC-3
   Scenario: Leaf role assigned at max depth
     Given a GraphRun at depth 3
     When the depth role is computed
@@ -798,6 +868,7 @@ Feature: Hierarchical depth/role system for subgraphs
     And can_spawn shall be false
     And control_scope shall be "node"
 
+  @AC-4
   Scenario: Subgraph invocation at depth exceeding max raises DepthExceededError
     Given a parent GraphRun at depth 2 with max_depth 3
     When a subgraph is invoked creating a child at depth 3
@@ -806,6 +877,7 @@ Feature: Hierarchical depth/role system for subgraphs
     And when the child attempts to spawn a subgraph at depth 4
     Then a DepthExceededError shall be raised
 
+  @AC-5
   Scenario: Depth role computed for max_depth of 1
     Given a GraphConfig with max_depth set to 1
     And a root GraphRun at depth 0
@@ -813,18 +885,21 @@ Feature: Hierarchical depth/role system for subgraphs
     Then the child shall have role "leaf"
     And can_spawn shall be false
 
+  @AC-6
   Scenario: Orchestrator at depth 2 can spawn children within its subtree
     Given a GraphRun at depth 1 with max_depth 3 and role "orchestrator"
     When it spawns a child at depth 2
     Then the child shall have role "orchestrator"
     And the child can_spawn shall be true
 
+  @AC-7
   Scenario: Leaf node attempting subgraph invocation is blocked
     Given a GraphRun at depth 3 with role "leaf"
     When the leaf node attempts to create a child GraphRun
     Then a DepthExceededError shall be raised
     And the parent NodeRun shall record a ClassifiedError with category PERMANENT
 
+  @AC-8
   Scenario: Depth descriptor is frozen and immutable
     Given a DepthDescriptor with role "orchestrator" at depth 1
     When any code attempts to modify the depth or role fields
@@ -844,6 +919,7 @@ Feature: Iterative context compaction
     And a model context window of 128000 tokens
     And a GraphTask with goal "Refactor the authentication module"
 
+  @AC-9
   Scenario: No compaction when blackboard is under threshold
     Given a blackboard with serialized size of 50000 bytes
     And a context window of 128000 tokens
@@ -851,6 +927,7 @@ Feature: Iterative context compaction
     Then no compaction shall occur
     And the blackboard shall remain unchanged
 
+  @AC-10
   Scenario: Compaction triggered when blackboard exceeds 80% of context window
     Given a blackboard with serialized size of 110000 bytes
     And a context window of 128000 tokens
@@ -859,6 +936,7 @@ Feature: Iterative context compaction
     And a CompactionResult shall be returned with bytes_after less than bytes_before
     And entries_compacted shall be greater than 0
 
+  @AC-11
   Scenario: Iterative compaction uses previous summary
     Given a blackboard that has been compacted once with _previous_summary "Initial progress: auth module analyzed"
     And the blackboard grows to exceed the threshold again
@@ -867,6 +945,7 @@ Feature: Iterative context compaction
     And the new summary shall be an incremental update, not a full re-summarization
     And _previous_summary shall be updated to the new summary
 
+  @AC-12
   Scenario: Critical context is preserved through compaction
     Given a blackboard with entries marked as critical: ["API key rotation scheduled for Tuesday", "Database migration in progress"]
     And the blackboard exceeds the compaction threshold
@@ -875,6 +954,7 @@ Feature: Iterative context compaction
     And the CompactionResult preserved_critical list shall contain "Database migration in progress"
     And the summarized context shall include both critical entries
 
+  @AC-13
   Scenario: Compaction result is injected into next node's context
     Given a GraphRun that has just compacted the blackboard
     And the compaction produced summary "Auth refactor 60% complete, OAuth2 flow implemented"
@@ -883,6 +963,7 @@ Feature: Iterative context compaction
     And the prompt shall include the compaction summary
     And the original verbose entries shall be excluded from the prompt
 
+  @AC-14
   Scenario: Original entries retained for audit after compaction
     Given a blackboard with 50 entries before compaction
     When compaction is invoked and produces a summary
@@ -890,6 +971,7 @@ Feature: Iterative context compaction
     And all 50 entries shall be retained in the blackboard for audit
     And only the summary shall appear in subsequent node contexts
 
+  @AC-15
   Scenario: Compaction handles empty blackboard gracefully
     Given a blackboard with serialized size of 0 bytes
     When compaction is checked
@@ -909,12 +991,14 @@ Feature: Steering and mid-run guidance
     Given a GraphRun with phase "running"
     And the GraphRun has a SteeringQueue
 
+  @AC-16
   Scenario: Steering appends guidance to the queue
     Given a running GraphRun
     When steer("Focus on the database schema next") is called
     Then the SteeringQueue shall contain one entry with guidance "Focus on the database schema next"
     And the entry timestamp shall be within 1 second of the current time
 
+  @AC-17
   Scenario: Guidance appears in next node's context after current node completes
     Given a running GraphRun with Node A currently executing
     When steer("Skip the review step") is called while Node A is in-flight
@@ -922,6 +1006,7 @@ Feature: Steering and mid-run guidance
     And the steering queue shall be drained before the next node starts
     And the next node's context shall include guidance "Skip the review step"
 
+  @AC-18
   Scenario: Multiple steering calls accumulate and drain atomically
     Given a running GraphRun
     When steer("Use Python 3.12 features") is called
@@ -932,6 +1017,7 @@ Feature: Steering and mid-run guidance
     Then all three entries shall be drained as a single SteeringGuidance
     And the next node's context shall include all three guidance strings
 
+  @AC-19
   Scenario: Steering does not interrupt in-flight node
     Given a running GraphRun with Node B currently in RUNNING phase
     When steer("Change approach to iterative") is called
@@ -939,12 +1025,14 @@ Feature: Steering and mid-run guidance
     And Node B's execution shall continue without any change
     And the guidance shall only appear after Node B completes
 
+  @AC-20
   Scenario: Leaf role ignores steering
     Given a GraphRun at depth 3 with role "leaf" and control_scope "node"
     When steer("Do something different") is called
     Then the steering call shall return without appending to the queue
     And the SteeringQueue shall remain empty
 
+  @AC-21
   Scenario: Orchestrator can steer within its subtree only
     Given a root GraphRun at depth 0 with child orchestrator at depth 1
     When the orchestrator calls steer("Prioritize subgraph A")
@@ -952,6 +1040,7 @@ Feature: Steering and mid-run guidance
     And the guidance shall NOT appear in sibling subtrees at the same depth
     And the guidance shall NOT appear in the root's direct nodes
 
+  @AC-22
   Scenario: Steering on a completed graph is a no-op
     Given a GraphRun with phase "completed"
     When steer("Post-completion guidance") is called
@@ -971,12 +1060,14 @@ Feature: Cross-process rate limit coordination
     Given a FileRateCoordinationStore at path "/tmp/maistro-rate-coordination.json"
     And a RateCoordinator using that store
 
+  @AC-23
   Scenario: No wait when no rate limit is active
     Given a provider "openai" with no entry in the rate coordination file
     When check_before_call is called for "openai"
     Then it shall return 0.0
     And the process shall proceed with the API call immediately
 
+  @AC-24
   Scenario: Process waits when another process recorded a rate limit
     Given a RateLimitState for "openai" with reset_at 60 seconds in the future
     And the state is written to the coordination file
@@ -984,6 +1075,7 @@ Feature: Cross-process rate limit coordination
     Then it shall return approximately 60.0 seconds to wait
     And the process should delay its API call accordingly
 
+  @AC-25
   Scenario: Recording a rate limit from a 429 response
     Given a process receives a 429 response from "anthropic" with Retry-After of 30 seconds
     When record_rate_limit is called with provider "anthropic" and retry_after_seconds 30
@@ -991,6 +1083,7 @@ Feature: Cross-process rate limit coordination
     And reset_at shall be approximately 30 seconds from now
     And limit_type shall be "rpm"
 
+  @AC-26
   Scenario: Stale entries are pruned on read
     Given a RateLimitState for "openai" with reset_at 10 seconds ago
     And the state is written to the coordination file
@@ -998,6 +1091,7 @@ Feature: Cross-process rate limit coordination
     Then it shall return 0.0
     And the stale entry shall be removed from the coordination file
 
+  @AC-27
   Scenario: Concurrent reads do not block each other
     Given a coordination file with an entry for "openai"
     When process A calls check_before_call for "openai"
@@ -1005,6 +1099,7 @@ Feature: Cross-process rate limit coordination
     Then both reads shall succeed using shared locks
     And neither read shall block the other
 
+  @AC-28
   Scenario: Write uses atomic file replacement
     Given a coordination file with existing entries for "openai" and "anthropic"
     When process A records a rate limit for "google"
@@ -1012,6 +1107,7 @@ Feature: Cross-process rate limit coordination
     And the existing entries for "openai" and "anthropic" shall be preserved
     And the new entry for "google" shall be added
 
+  @AC-29
   Scenario: Different providers tracked independently
     Given a RateLimitState for "openai" with reset_at 30 seconds from now
     And no entry for "anthropic"
@@ -1019,6 +1115,7 @@ Feature: Cross-process rate limit coordination
     Then it shall return 0.0
     And the "openai" entry shall remain unaffected
 
+  @AC-30
   Scenario: Staleness threshold prunes very old entries
     Given a RateLimitState for "openai" with updated_at 400 seconds ago
     And a staleness_threshold of 300 seconds
@@ -1038,6 +1135,7 @@ Feature: Stage-aware retry policies
   Background:
     Given a StageAwareRetryPolicy with default policies
 
+  @AC-31
   Scenario: Read stage retries up to 3 times with 250ms fixed delay
     Given a read operation that fails with a transient network error
     When should_retry is called with stage "read" and attempt 0
@@ -1051,6 +1149,7 @@ Feature: Stage-aware retry policies
     When should_retry is called with stage "read" and attempt 3
     Then it shall return false
 
+  @AC-32
   Scenario: Evaluate stage retries up to 2 times with exponential backoff
     Given an evaluate operation that fails with a transient error
     When should_retry is called with stage "evaluate" and attempt 0
@@ -1062,26 +1161,30 @@ Feature: Stage-aware retry policies
     When should_retry is called with stage "evaluate" and attempt 2
     Then it shall return false
 
+  @AC-33
   Scenario: Write stage does not retry by default
     Given a write operation that fails with a transient error
     When should_retry is called with stage "write" and attempt 0
     Then it shall return false
     And no retry shall occur
 
+  @AC-34
   Scenario: Write stage retries with explicit idempotency key
     Given a write operation that fails with a transient error
     And the operation has an idempotency key
     When should_retry is called with stage "write", attempt 0, and has_idempotency_key true
     Then it shall return false
-    Because the default write max_attempts is 1 even with an idempotency key
+    # ...because the default write max_attempts is 1 even with an idempotency key
     And a custom policy with max_attempts greater than 1 would return true
 
+  @AC-35
   Scenario: Non-transient errors are never retried regardless of stage
     Given a read operation that fails with a 401 Unauthorized error
     When should_retry is called with stage "read" and attempt 0
     Then it shall return false
     And no retry shall occur
 
+  @AC-36
   Scenario: Custom policies override defaults per stage
     Given a StageAwareRetryPolicy with a custom write policy of max_attempts 2
     And the custom write policy has idempotency_required true
@@ -1089,6 +1192,7 @@ Feature: Stage-aware retry policies
     Then should_retry shall return true for attempt 0
     And should_retry shall return false for attempt 1
 
+  @AC-37
   Scenario: LLM call stage uses exponential backoff matching ADR-038
     Given an LLM call operation that fails with a 429 rate limit error
     When should_retry is called with stage "llm_call" and attempt 0
@@ -1111,6 +1215,7 @@ Feature: Context length probing
     Given a ContextLengthProber with probe tiers [4096, 16384, 65536, 131072, 204800]
     And a model registry with no cached limit for "newmodel-v1"
 
+  @AC-38
   Scenario: Probing returns cached limit without making API calls
     Given a model registry with a cached context limit of 32768 for "known-model"
     When probe is called for "known-model"
@@ -1118,6 +1223,7 @@ Feature: Context length probing
     And method shall be "cached"
     And no LLM API call shall be made
 
+  @AC-39
   Scenario: Probing succeeds at all tiers and returns maximum tier
     Given a model "newmodel-v1" that accepts all prompt sizes up to 204800 tokens
     When probe is called for "newmodel-v1"
@@ -1127,6 +1233,7 @@ Feature: Context length probing
     And method shall be "probe_success"
     And the limit shall be cached in the model registry
 
+  @AC-40
   Scenario: Probing parses actual limit from overflow error
     Given a model "newmodel-v1" that accepts 4K but fails at 16K with error "maximum context length is 8192 tokens"
     When probe is called for "newmodel-v1"
@@ -1137,6 +1244,7 @@ Feature: Context length probing
     And method shall be "error_parse"
     And 8192 shall be cached in the model registry
 
+  @AC-41
   Scenario: Probing uses binary search when error parsing fails
     Given a model "newmodel-v1" that accepts 4K but fails at 16K with unparseable error
     When probe is called for "newmodel-v1"
@@ -1147,6 +1255,7 @@ Feature: Context length probing
     And the ProbeResult method shall be "binary_search"
     And the discovered limit shall be cached in the model registry
 
+  @AC-42
   Scenario: Probing stops at first failure and does not attempt higher tiers
     Given a model "small-model" that fails at 4096 tokens with error "context length is 2048"
     When probe is called for "small-model"
@@ -1155,6 +1264,7 @@ Feature: Context length probing
     And the ProbeResult context_limit shall be 2048
     And method shall be "error_parse"
 
+  @AC-43
   Scenario: Probed limit feeds into compaction threshold calculation
     Given a probed context limit of 8192 tokens for "newmodel-v1"
     And a PercentageThreshold of 0.8
@@ -1162,6 +1272,7 @@ Feature: Context length probing
     Then the compaction threshold shall be 6553 tokens (8192 * 0.8)
     And compaction shall trigger when the blackboard exceeds 6553 tokens
 
+  @AC-44
   Scenario: Concurrent probes for the same model use cached result
     Given two concurrent calls to probe for "newmodel-v1"
     And the model registry has no cached limit
@@ -1170,6 +1281,7 @@ Feature: Context length probing
     And the second call shall use the cached result from the first
     And the ProbeResult for both calls shall have the same context_limit
 
+  @AC-45
   Scenario: Probe prompt is approximately the target token count
     Given a probe tier of 65536 tokens
     When the prober generates a probe prompt

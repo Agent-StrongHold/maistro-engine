@@ -62,6 +62,7 @@ class TestTierRouting:
         [stored] = await store.events_for_trace("trace-1")
         assert stored.payload == event.payload
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-5")
     async def test_sensitive_payload_sealed_and_encrypted(self) -> None:
         encrypted_inputs: list[bytes] = []
 
@@ -82,6 +83,7 @@ class TestTierRouting:
         payload = await store.read_sensitive_payload("trace-1", 0, "alice", "debugging")
         assert payload == event.payload
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-5")
     async def test_sensitive_read_writes_access_audit_row(self) -> None:
         store = InMemoryRecordStore()
         await store.record(make_event(0, tier=SensitivityTier.SENSITIVE))
@@ -97,11 +99,13 @@ class TestTierRouting:
         ]
         assert all(a.trace_id == "trace-1" and a.seq == 0 for a in audit)
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-5")
     async def test_sensitive_read_missing_raises(self) -> None:
         store = InMemoryRecordStore()
         with pytest.raises(SealedAccessError):
             await store.read_sensitive_payload("trace-1", 7, "alice", "nope")
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-6")
     async def test_secret_stores_hash_and_metadata_only(self) -> None:
         store = InMemoryRecordStore()
         event = make_event(0, tier=SensitivityTier.SECRET, args={"ssn": "123-45-6789"})
@@ -121,6 +125,7 @@ class TestTierRouting:
             max_size=5,
         )
     )
+    @pytest.mark.ac("SPEC-070226-2b70/AC-6")
     async def test_property_secret_tier_persists_no_payload_bytes(
         self, payload: dict[str, Any]
     ) -> None:
@@ -149,6 +154,7 @@ class TestTierRouting:
 
 
 class TestReplaySession:
+    @pytest.mark.ac("SPEC-070226-2b70/AC-2")
     async def test_serves_recorded_responses_in_order(self) -> None:
         store = InMemoryRecordStore()
         await store.record(make_event(0, args={"prompt": "a"}, response={"content": "ra"}))
@@ -160,6 +166,7 @@ class TestReplaySession:
         assert await session.next_response("llm", {"prompt": "a"}) == {"content": "ra"}
         assert await session.next_response("tool", {"name": "ls"}) == {"output": "rb"}
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-4")
     async def test_hash_mismatch_raises_divergence_naming_seq_and_hashes(self) -> None:
         store = InMemoryRecordStore()
         await store.record(make_event(0, args={"prompt": "recorded"}))
@@ -176,6 +183,7 @@ class TestReplaySession:
         assert err.recorded_hash is not None and err.recorded_hash in str(err)
         assert err.attempted_hash in str(err)
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-4")
     async def test_kind_mismatch_raises_divergence(self) -> None:
         store = InMemoryRecordStore()
         await store.record(make_event(0, kind="llm", args={"prompt": "a"}))
@@ -183,12 +191,14 @@ class TestReplaySession:
         with pytest.raises(ReplayDivergenceError, match="kind"):
             await session.next_response("tool", {"prompt": "a"})
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-4")
     async def test_exhausted_trace_raises_divergence(self) -> None:
         store = InMemoryRecordStore()
         session = ReplaySession(store, "trace-1")
         with pytest.raises(ReplayDivergenceError, match="exhausted"):
             await session.next_response("llm", {"prompt": "a"})
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-5")
     async def test_sensitive_replay_reads_via_sealed_path_with_audit(self) -> None:
         store = InMemoryRecordStore()
         await store.record(
@@ -203,6 +213,7 @@ class TestReplaySession:
         assert await session.next_response("llm", {"prompt": "a"}) == {"content": "sealed"}
         assert [a.accessor for a in store.access_audit] == ["replay"]
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-6")
     async def test_secret_replay_raises_payload_unavailable(self) -> None:
         store = InMemoryRecordStore()
         await store.record(make_event(0, tier=SensitivityTier.SECRET, args={"prompt": "a"}))
@@ -215,6 +226,7 @@ class TestReplaySession:
         kinds=st.lists(st.sampled_from(["llm", "tool"]), min_size=1, max_size=12),
         seed=st.integers(min_value=0, max_value=10_000),
     )
+    @pytest.mark.ac("SPEC-070226-2b70/AC-2")
     async def test_property_replay_preserves_seq_order(self, kinds: list[str], seed: int) -> None:
         """For any recorded sequence of LLM + tool calls, events_for_trace and the
         replay session preserve the original per-trace seq order."""

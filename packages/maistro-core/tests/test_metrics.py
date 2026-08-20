@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from maistro.observability.metrics import MetricsRegistry
 
 
@@ -96,3 +98,35 @@ def test_collect_all():
     result = reg.collect_all()
     assert "uptime_seconds" in result
     assert "requests" in result
+
+
+@pytest.mark.ac("SPEC-228/AC-2")
+def test_reregistering_a_name_returns_the_same_instrument():
+    """Two callers asking for one metric must share it, not shadow each other.
+
+    Modules register their metrics at import time, so the same name is reached
+    from several places. If the second call replaced the first instrument, the
+    counts already recorded through the first handle would silently stop being
+    collected — a metric that reads zero while the code paths under it run.
+    """
+    reg = MetricsRegistry()
+    first = reg.counter("shared_total", "first")
+    first.inc(amount=3)
+    second = reg.counter("shared_total", "second")
+
+    assert second is first
+    assert second.collect()[0]["value"] == 3
+
+    assert reg.gauge("g", "") is reg.gauge("g", "")
+    assert reg.histogram("h", "") is reg.histogram("h", "")
+
+
+@pytest.mark.ac("SPEC-228/AC-2")
+def test_registry_exposes_all_three_instrument_kinds():
+    reg = MetricsRegistry()
+    reg.counter("c", "").inc()
+    reg.gauge("g", "").set(2)
+    reg.histogram("h", "").observe(0.5)
+
+    collected = reg.collect_all()
+    assert {"c", "g", "h"} <= set(collected)

@@ -30,18 +30,21 @@ class TestPIIDetector:
         detector = PIIDetector(mode="dev")
         assert detector.inspect(CLEAN_PAYLOAD) is CLEAN_PAYLOAD
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-7")
     def test_dev_mode_raises_on_email(self) -> None:
         detector = PIIDetector(mode="dev")
         with pytest.raises(UnexpectedPIIError) as exc_info:
             detector.inspect(EMAIL_PAYLOAD)
         assert "email" in exc_info.value.pii_types
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-7")
     def test_dev_mode_raises_on_secret_shaped_token(self) -> None:
         detector = PIIDetector(mode="dev")
         with pytest.raises(UnexpectedPIIError) as exc_info:
             detector.inspect(AWS_PAYLOAD)
         assert "aws_key" in exc_info.value.pii_types
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-7")
     def test_prod_mode_redacts_and_emits(self) -> None:
         emitted: list[tuple[str, dict[str, Any]]] = []
         detector = PIIDetector(mode="prod", emit=lambda name, attrs: emitted.append((name, attrs)))
@@ -55,6 +58,7 @@ class TestPIIDetector:
         after = sum(v["value"] for v in pii_unexpected_match_total.collect())
         assert after == before + 1
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-7")
     def test_prod_mode_does_not_mutate_original(self) -> None:
         detector = PIIDetector(mode="prod")
         detector.inspect(EMAIL_PAYLOAD)
@@ -74,6 +78,7 @@ class TestPIIDetector:
             detector.inspect({"x": "EMP-654321"})
         assert "employee_id" in exc_info.value.pii_types
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-7")
     def test_scans_nested_lists_and_keys(self) -> None:
         detector = PIIDetector(mode="dev")
         with pytest.raises(UnexpectedPIIError):

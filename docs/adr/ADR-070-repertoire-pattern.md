@@ -29,6 +29,26 @@ history:
 
 # ADR-070: The Repertoire Pattern
 
+> **Convergence note (2026-08-19).** This ADR is marked `Implemented`, but the
+> code implementing it has no path from any process entry point — see
+> [#363](https://github.com/Agent-StrongHold/maistro-engine/issues/363). That
+> is not an oversight:
+> [SPEC-258](../specs/SPEC-258-repertoire-pattern-core.md) built the generic
+> `Repertoire` protocol and `repertoire_run` cascade, and put refactoring the
+> existing instances — Builders' `SpecTemplateStore`, the Router's selector,
+> RLPHD — in Non-goals. This ADR's own acceptance criterion 6 asks only that
+> they be *documented* as conforming, not migrated. The machinery has no
+> callers because the migration that would call it was explicitly deferred.
+>
+> The status is knowingly left unchanged rather than corrected. The capability
+> is still wanted, so `Deprecated` would be false; `Superseded` requires a
+> `superseded-by` and nothing replaces this. Both are terminal, so choosing
+> wrong forecloses the other, and ADR-097's forward-only lifecycle offers no
+> transition back from `Implemented` for an ADR marked so optimistically.
+> Correcting it truthfully needs either the missing substrate or a lifecycle
+> that can express "specified, partially built, blocked".
+
+
 **Status:** Proposed
 **Date:** 2026-05-30
 

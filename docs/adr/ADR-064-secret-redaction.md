@@ -14,6 +14,51 @@ blocked-by: []
 contracts:
   - behavioral
 tests: []
+ac-modules:
+  AC-1: maistro.security.redact
+  AC-2: maistro.security.redact
+  AC-3: maistro.security.redact
+  AC-4: maistro.security.redact
+  AC-5: maistro.security.redact
+  AC-6: maistro.security.redact
+  AC-7: maistro.security.redact
+  AC-8: maistro.security.redact
+  AC-9: maistro.security.redact
+  AC-10: maistro.security.redact
+  AC-11: maistro.security.redact
+  AC-12: maistro.security.redact
+  AC-13: maistro.security.redact
+  AC-14: maistro.security.redact
+  AC-15: maistro.security.redact
+  AC-16: maistro.security.redact
+  AC-17: maistro.security.redact
+  AC-18: maistro.security.redact
+  AC-19: maistro.security.redact
+  AC-20: maistro.security.redact
+  AC-21: maistro.security.redact
+  AC-22: maistro.security.redact
+  AC-23: maistro.security.redact
+  AC-24: maistro.security.redact
+  AC-25: maistro.security.redact
+  AC-26: maistro.security.redact
+  AC-27: maistro.security.redact
+  AC-28: maistro.security.redact
+  AC-29: maistro.security.redact
+  AC-30: maistro.security.redact
+  AC-31: maistro.security.redact
+  AC-32: maistro.security.redact
+  AC-33: maistro.security.redact
+  AC-34: maistro.security.redact
+  AC-35: maistro.security.redact
+  AC-36: maistro.security.redact
+  AC-37: maistro.security.redact
+  AC-38: maistro.security.redact
+  AC-39: maistro.security.redact
+  AC-40: maistro.security.redact
+  AC-41: maistro.security.redact
+  AC-42: maistro.security.redact
+  AC-43: maistro.security.redact
+  AC-44: maistro.security.redact
 layer: Governance
 owners:
   - '@BlakeMatthews-dev'
@@ -291,6 +336,29 @@ maistro/security/
 
 ## Gherkin acceptance criteria
 
+> **Measurement note (2026-08-19).** These 44 scenarios are tagged `@AC-N` and
+> measured by `scripts/check-ac-state.py`. Thirty-four are proven end to end —
+> bound to passing tests over `maistro.security.redact`, which is reachable —
+> including the four nested-pattern-safety scenarios (AC-23, AC-31..34), which
+> got new tests and turned out already true of the implementation. Ten remain
+> `declared` because they name behaviour that does not exist yet:
+>
+> - **AC-12..14** — a JSON-field pattern with a `[REDACTED_JSON_SECRET]` label;
+>   no JSON-aware pattern exists (JSON-embedded secrets are caught only when an
+>   inner pattern like `sk-` fires, which AC-31/32 prove).
+> - **AC-18** — OpenSSH key blocks; the private-key pattern matches
+>   `(RSA|EC)?/generic` headers, `OPENSSH` is unverified.
+> - **AC-25** — username-only URL userinfo with `[REDACTED_URL_CREDENTIALS]`.
+> - **AC-35, AC-36** — the latency and backtracking bounds, unbenchmarked.
+> - **AC-41** — states `redact(None)` returns `""`; the implementation returns
+>   `None` and its test asserts that. **The scenario and the code contradict
+>   each other** — one of them must change, and silently binding either way
+>   would paper over exactly the kind of drift this measurement exists to
+>   surface.
+> - **AC-42, AC-43** — Telegram bot tokens and Sentry DSNs, patterns not
+>   implemented. These are real catalogue gaps in an Accepted security ADR,
+>   worth their own focused change rather than a side-effect of tagging.
+
 ```gherkin
 Feature: Comprehensive secret redaction
   As the maistro security layer
@@ -303,48 +371,56 @@ Feature: Comprehensive secret redaction
 
   # --- 1. API key prefix patterns ---
 
+  @AC-1
   Scenario: OpenAI API key is redacted
     Given input text containing "api_key=sk-proj-abc123def456ghi789jkl012mno345"
     When redaction is applied
     Then the output contains "[REDACTED_API_KEY]"
     And the output does not contain "sk-proj-abc123"
 
+  @AC-2
   Scenario: GitHub personal access token is redacted
     Given input text containing "token=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij"
     When redaction is applied
     Then the output contains "[REDACTED_API_KEY]"
     And the output does not contain "ghp_ABCDE"
 
+  @AC-3
   Scenario: Google API key is redacted
     Given input text containing "key=AIzaSyA1234567890abcdefghijklmnopqrstuv"
     When redaction is applied
     Then the output contains "[REDACTED_API_KEY]"
     And the output does not contain "AIzaSy"
 
+  @AC-4
   Scenario: Slack bot token is redacted
     Given input text containing a Slack bot token pattern (xoxb- prefix followed by digits and chars)
     When redaction is applied
     Then the output contains "[REDACTED_API_KEY]"
     And the output does not contain the original token
 
+  @AC-5
   Scenario: Perplexity API key is redacted
     Given input text containing "Authorization: Bearer pplx-abcdef1234567890abcdef123456"
     When redaction is applied
     Then the output contains "[REDACTED_API_KEY]"
     And the output does not contain "pplx-"
 
+  @AC-6
   Scenario: Anthropic API key is redacted
     Given input text containing "sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234567890"
     When redaction is applied
     Then the output contains "[REDACTED_API_KEY]"
     And the output does not contain "sk-ant-"
 
+  @AC-7
   Scenario: Stripe live key is redacted
     Given input text containing a Stripe live key pattern (sk_live_ prefix followed by alphanumeric chars)
     When redaction is applied
     Then the output contains "[REDACTED_API_KEY]"
     And the output does not contain the original key
 
+  @AC-8
   Scenario: AWS access key ID is redacted
     Given input text containing "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE"
     When redaction is applied
@@ -353,18 +429,21 @@ Feature: Comprehensive secret redaction
 
   # --- 2. ENV assignment redaction ---
 
+  @AC-9
   Scenario: ENV variable with sensitive name is redacted
     Given input text containing "export DATABASE_PASSWORD=hunter2"
     When redaction is applied
     Then the output contains "[REDACTED_ENV_SECRET]"
     And the output does not contain "hunter2"
 
+  @AC-10
   Scenario: ENV assignment for API key is redacted
     Given input text containing "API_KEY=sk-proj-abc123def456ghi789"
     When redaction is applied
     Then the output does not contain "sk-proj-abc123"
     And the output contains "[REDACTED"
 
+  @AC-11
   Scenario: ENV variable with non-sensitive name is preserved
     Given input text containing "export PATH=/usr/local/bin"
     When redaction is applied
@@ -372,6 +451,7 @@ Feature: Comprehensive secret redaction
 
   # --- 3. JSON sensitive field redaction ---
 
+  @AC-12
   Scenario: JSON password field value is redacted
     Given input text containing '{"username": "admin", "password": "s3cret!", "role": "user"}'
     When redaction is applied
@@ -379,6 +459,7 @@ Feature: Comprehensive secret redaction
     And the output does not contain "s3cret!"
     And the output contains '"username": "admin"'
 
+  @AC-13
   Scenario: JSON api_key field value is redacted
     Given input text containing '{"api_key": "sk-proj-1234567890abcdef", "model": "gpt-4"}'
     When redaction is applied
@@ -386,6 +467,7 @@ Feature: Comprehensive secret redaction
     And the output does not contain "sk-proj-"
     And the output contains '"model": "gpt-4"'
 
+  @AC-14
   Scenario: JSON non-sensitive field is preserved
     Given input text containing '{"name": "agent-1", "status": "running"}'
     When redaction is applied
@@ -394,12 +476,14 @@ Feature: Comprehensive secret redaction
 
   # --- 4. Authorization header redaction ---
 
+  @AC-15
   Scenario: Bearer token in Authorization header is redacted
     Given input text containing "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig"
     When redaction is applied
     Then the output contains "[REDACTED_AUTH_HEADER]"
     And the output does not contain "eyJhbG"
 
+  @AC-16
   Scenario: Basic auth in Authorization header is redacted
     Given input text containing "Authorization: Basic dXNlcjpwYXNz"
     When redaction is applied
@@ -408,6 +492,7 @@ Feature: Comprehensive secret redaction
 
   # --- 5. Private key block redaction ---
 
+  @AC-17
   Scenario: RSA private key block is redacted
     Given input text containing a multi-line RSA private key block starting with "-----BEGIN RSA PRIVATE KEY-----" and ending with "-----END RSA PRIVATE KEY-----"
     When redaction is applied
@@ -415,6 +500,7 @@ Feature: Comprehensive secret redaction
     And the output does not contain "BEGIN RSA PRIVATE KEY"
     And the output does not contain any base64 key data between the markers
 
+  @AC-18
   Scenario: OpenSSH private key block is redacted
     Given input text containing "-----BEGIN OPENSSH PRIVATE KEY-----\nbase64data\n-----END OPENSSH PRIVATE KEY-----"
     When redaction is applied
@@ -423,18 +509,21 @@ Feature: Comprehensive secret redaction
 
   # --- 6. Database connection string redaction ---
 
+  @AC-19
   Scenario: PostgreSQL connection string with password is redacted
     Given input text containing "postgres://admin:hunter2@db.example.com:5432/mydb"
     When redaction is applied
     Then the output contains "[REDACTED_DB_CONNECTION]"
     And the output does not contain "hunter2"
 
+  @AC-20
   Scenario: MySQL connection string with password is redacted
     Given input text containing "mysql://root:p@ssw0rd@localhost:3306/production"
     When redaction is applied
     Then the output contains "[REDACTED_DB_CONNECTION]"
     And the output does not contain "p@ssw0rd"
 
+  @AC-21
   Scenario: MongoDB connection string with password is redacted
     Given input text containing "mongodb://user:s3cret@cluster.example.net/mydb"
     When redaction is applied
@@ -443,12 +532,14 @@ Feature: Comprehensive secret redaction
 
   # --- 7. JWT redaction ---
 
+  @AC-22
   Scenario: JWT token is redacted
     Given input text containing "token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
     When redaction is applied
     Then the output contains "[REDACTED_JWT]"
     And the output does not contain "eyJhbG"
 
+  @AC-23
   Scenario: JWT in Authorization header is redacted by auth header pattern
     Given input text containing "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.sig"
     When redaction is applied
@@ -457,12 +548,14 @@ Feature: Comprehensive secret redaction
 
   # --- 8. URL userinfo redaction ---
 
+  @AC-24
   Scenario: URL with username and password is redacted
     Given input text containing "https://admin:hunter2@api.example.com/v1/endpoint"
     When redaction is applied
     Then the output contains "[REDACTED_URL_CREDENTIALS]"
     And the output does not contain "admin:hunter2"
 
+  @AC-25
   Scenario: URL with only username is redacted
     Given input text containing "https://admin@api.example.com/v1/endpoint"
     When redaction is applied
@@ -471,6 +564,7 @@ Feature: Comprehensive secret redaction
 
   # --- 9. URL query parameter redaction ---
 
+  @AC-26
   Scenario: URL with api_key query parameter is redacted
     Given input text containing "https://api.example.com/v1/endpoint?api_key=sk-proj-123456&format=json"
     When redaction is applied
@@ -478,6 +572,7 @@ Feature: Comprehensive secret redaction
     And the output does not contain "sk-proj-"
     And the output contains "format=json"
 
+  @AC-27
   Scenario: URL with token query parameter is redacted
     Given input text containing "https://oauth.example.com/callback?token=abc123def456&state=random"
     When redaction is applied
@@ -485,6 +580,7 @@ Feature: Comprehensive secret redaction
     And the output does not contain "abc123def456"
     And the output contains "state=random"
 
+  @AC-28
   Scenario: URL with non-sensitive query parameter is preserved
     Given input text containing "https://api.example.com/v1/endpoint?limit=100&offset=0"
     When redaction is applied
@@ -493,6 +589,7 @@ Feature: Comprehensive secret redaction
 
   # --- 10. Multi-line content ---
 
+  @AC-29
   Scenario: Multi-line text with secrets on different lines is fully redacted
     Given input text containing:
       """
@@ -507,6 +604,7 @@ Feature: Comprehensive secret redaction
     And the output contains "Config loaded:"
     And the output contains "Connected successfully."
 
+  @AC-30
   Scenario: Private key block spanning multiple lines is fully redacted
     Given input text containing:
       """
@@ -525,6 +623,7 @@ Feature: Comprehensive secret redaction
 
   # --- 11. Nested patterns ---
 
+  @AC-31
   Scenario: API key inside JSON value is redacted without partial leakage
     Given input text containing '{"token": "sk-proj-abc123def456ghi789jkl012mno345pqr678"}'
     When redaction is applied
@@ -532,18 +631,21 @@ Feature: Comprehensive secret redaction
     And the output does not contain "abc123"
     And the output contains "[REDACTED"
 
+  @AC-32
   Scenario: URL with credentials inside JSON field is redacted
     Given input text containing '{"connection_string": "postgres://admin:s3cret@db.example.com/app"}'
     When redaction is applied
     Then the output does not contain "s3cret"
     And the output does not contain "admin:s3cret@"
 
+  @AC-33
   Scenario: URL with api_key query param containing an API key prefix is redacted
     Given input text containing "https://api.example.com?api_key=sk-proj-1234567890abcdef"
     When redaction is applied
     Then the output does not contain "sk-proj-"
     And the output does not contain "1234567890"
 
+  @AC-34
   Scenario: JWT inside an Authorization header is fully consumed
     Given input text containing "Authorization: Bearer eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjMifQ.sig123"
     When redaction is applied
@@ -553,11 +655,13 @@ Feature: Comprehensive secret redaction
 
   # --- 12. Performance ---
 
+  @AC-35
   Scenario: Redaction of a 1KB log line completes within 1ms
     Given a generated input text of 1024 bytes containing 3 embedded secrets
     When redaction is applied 100 times
     Then the total execution time is less than 100 milliseconds
 
+  @AC-36
   Scenario: Redaction does not exhibit catastrophic backtracking on adversarial input
     Given input text containing 10000 repetitions of "sk-" followed by non-matching characters
     When redaction is applied
@@ -566,11 +670,13 @@ Feature: Comprehensive secret redaction
 
   # --- 13. Non-matching content passes through unchanged ---
 
+  @AC-37
   Scenario: Plain text with no secrets is returned unchanged
     Given input text "The agent completed task #42 successfully in 3.2 seconds."
     When redaction is applied
     Then the output is exactly "The agent completed task #42 successfully in 3.2 seconds."
 
+  @AC-38
   Scenario: Code snippet without secrets is returned unchanged
     Given input text containing:
       """
@@ -580,6 +686,7 @@ Feature: Comprehensive secret redaction
     When redaction is applied
     Then the output is identical to the input
 
+  @AC-39
   Scenario: URLs without credentials or sensitive params are preserved
     Given input text containing "https://api.example.com/v1/models?limit=50"
     When redaction is applied
@@ -587,11 +694,13 @@ Feature: Comprehensive secret redaction
 
   # --- 14. Empty and None input handling ---
 
+  @AC-40
   Scenario: Empty string returns empty string
     Given input text ""
     When redaction is applied
     Then the output is ""
 
+  @AC-41
   Scenario: None input returns empty string
     Given input text is None
     When redaction is applied
@@ -599,6 +708,7 @@ Feature: Comprehensive secret redaction
 
   # --- 15. Telegram bot token ---
 
+  @AC-42
   Scenario: Telegram bot token is redacted
     Given input text containing "123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
     When redaction is applied
@@ -607,6 +717,7 @@ Feature: Comprehensive secret redaction
 
   # --- 16. Sentry DSN ---
 
+  @AC-43
   Scenario: Sentry DSN is redacted
     Given input text containing "https://abc123def456@o123456.ingest.sentry.io/789012"
     When redaction is applied
@@ -615,6 +726,7 @@ Feature: Comprehensive secret redaction
 
   # --- 17. Multiple secrets in one string ---
 
+  @AC-44
   Scenario: Multiple different secret types in one string are all redacted
     Given input text containing "key=sk-proj-abc123 and db=postgres://u:p@h/d and token=eyJhbGciOiJ9.eyJ.c2ln"
     When redaction is applied

@@ -27,8 +27,8 @@
         "Enum"
       ],
       "rationale": "Pydantic models and enums expose fields declaratively for validation/serialization rather than direct Python reads.",
-      "finding_count": 439,
-      "finding_sha256": "27e754fca30ae0ae860225ffba314382c6177abdbcd0aa46e5f2a5db7e3214b2"
+      "finding_count": 440,
+      "finding_sha256": "97fc29469448bd98e5c13ff1d6b17bc35be0375c57b2cb8bc036fca59aa4a5f6"
     },
     {
       "id": "dataclass-declarative-field",

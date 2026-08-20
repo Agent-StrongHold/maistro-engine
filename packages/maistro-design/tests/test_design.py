@@ -8,6 +8,7 @@ Contract x Scope axes per ADR-032:
 from __future__ import annotations
 
 import dataclasses
+import itertools
 
 import pytest
 from hypothesis import given, settings
@@ -19,6 +20,7 @@ from hypothesis import strategies as st
 class TestTrustTier:
     @pytest.mark.contract("boundary")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-1")
     def test_min_is_monotone(self):
         """
         Given TrustTier.T0
@@ -32,6 +34,7 @@ class TestTrustTier:
 
     @pytest.mark.contract("boundary")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-2")
     def test_skull_is_global_minimum(self):
         """
         Given any TrustTier t
@@ -45,6 +48,7 @@ class TestTrustTier:
 
     @pytest.mark.contract("boundary")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-3")
     def test_min_is_commutative(self):
         """
         Given TrustTier.T1 and TrustTier.T3
@@ -62,6 +66,7 @@ class TestTrustTier:
         a=st.sampled_from(["t0", "t1", "t2", "t3", "skull"]),
         b=st.sampled_from(["t0", "t1", "t2", "t3", "skull"]),
     )
+    @pytest.mark.ac("SPEC-160/AC-1")
     def test_min_monotonically_decreasing(self, a: str, b: str):
         """
         Given any two TrustTiers
@@ -83,6 +88,7 @@ class TestTrustTier:
 class TestTrustBanishList:
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-5")
     def test_added_pattern_detected(self):
         """
         Given an empty InMemoryTrustBanishList
@@ -97,6 +103,7 @@ class TestTrustBanishList:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-6")
     def test_non_matching_content_not_banned(self):
         """
         Given a banish list with pattern "ignore previous"
@@ -111,6 +118,7 @@ class TestTrustBanishList:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-7")
     def test_list_patterns_roundtrip(self):
         """
         Given a banish list with patterns ["a", "b", "c"]
@@ -155,6 +163,7 @@ class TestTrustReviewQueue:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-8")
     def test_enqueued_record_appears_in_pending(self):
         """
         Given an empty queue
@@ -170,6 +179,7 @@ class TestTrustReviewQueue:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-9")
     def test_resolved_record_not_in_pending(self):
         """
         Given a queue with one pending record
@@ -187,6 +197,7 @@ class TestTrustReviewQueue:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-10")
     def test_resolve_unknown_id_raises(self):
         """
         Given an empty queue
@@ -486,6 +497,7 @@ class TestDesignOutput:
 class TestInMemoryDesignSkillRegistry:
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-11")
     def test_load_builtins_registers_at_least_9(self, skill_registry):
         """
         Given a loaded registry
@@ -495,6 +507,7 @@ class TestInMemoryDesignSkillRegistry:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-14")
     def test_t0_skill_not_overwritten_by_t2(self, skill_registry):
         """
         Given a t0 skill "login-flow"
@@ -516,6 +529,7 @@ class TestInMemoryDesignSkillRegistry:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-16")
     def test_list_by_mode_returns_only_matching(self, skill_registry):
         """
         Given a loaded registry
@@ -542,6 +556,7 @@ class TestInMemoryDesignSkillRegistry:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-13")
     def test_featured_skills_have_discovery_forms(self, skill_registry):
         """Featured skills must have at least one DiscoveryField."""
         for skill in skill_registry.list_featured():
@@ -551,6 +566,7 @@ class TestInMemoryDesignSkillRegistry:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-15")
     def test_delete_returns_false_for_unknown_slug(self):
         from maistro_design.skills.registry import InMemoryDesignSkillRegistry
 
@@ -581,6 +597,7 @@ class TestInMemoryDesignSkillRegistry:
         n=st.integers(min_value=0, max_value=10),
     )
     @settings(max_examples=30)
+    @pytest.mark.ac("SPEC-160/AC-16")
     def test_list_by_mode_is_subset_of_list_all(self, mode_val: str, n: int):
         """list_by_mode(m) is always a subset of list_all()."""
         from maistro_design.skills.registry import InMemoryDesignSkillRegistry
@@ -602,6 +619,7 @@ class TestInMemoryDesignSkillRegistry:
 class TestInMemoryDesignSystemRegistry:
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-17")
     def test_register_and_get_roundtrip(self):
         """
         Given a system
@@ -618,6 +636,7 @@ class TestInMemoryDesignSystemRegistry:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-18")
     def test_get_returns_none_for_unknown(self):
         from maistro_design.systems.registry import InMemoryDesignSystemRegistry
 
@@ -626,6 +645,7 @@ class TestInMemoryDesignSystemRegistry:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-19")
     def test_delete_returns_false_for_unknown(self):
         from maistro_design.systems.registry import InMemoryDesignSystemRegistry
 
@@ -634,6 +654,7 @@ class TestInMemoryDesignSystemRegistry:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-20")
     def test_list_all_length(self):
         from maistro_design.systems.registry import InMemoryDesignSystemRegistry
         from maistro_design.types import DesignSystem
@@ -650,6 +671,7 @@ class TestInMemoryDesignSystemRegistry:
 class TestDesignSystemLoader:
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-21")
     def test_from_dict_with_colors(self):
         """
         Given a manifest dict with a colors list
@@ -672,6 +694,7 @@ class TestDesignSystemLoader:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-22")
     def test_from_dict_empty_colors(self):
         """
         Given a manifest dict with no colors key
@@ -685,6 +708,7 @@ class TestDesignSystemLoader:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-23")
     def test_from_markdown_extracts_slug(self):
         """
         Given a DESIGN.md string with YAML front-matter
@@ -715,6 +739,7 @@ class TestDesignSystemLoader:
 class TestDesignEngineDiscovery:
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-24")
     async def test_run_discovery_returns_serialisable_dicts(self, engine):
         """
         Given a loaded engine
@@ -733,6 +758,7 @@ class TestDesignEngineDiscovery:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-25")
     async def test_run_discovery_raises_for_unknown_slug(self, engine):
         """
         Given a loaded engine
@@ -751,6 +777,7 @@ class TestDesignEngineDiscovery:
 class TestDesignEngineGenerate:
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("integration")
+    @pytest.mark.ac("SPEC-160/AC-26")
     async def test_generate_happy_path(self, engine):
         """
         Given all required discovery fields populated
@@ -775,6 +802,7 @@ class TestDesignEngineGenerate:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("integration")
+    @pytest.mark.ac("SPEC-160/AC-27")
     async def test_generate_sets_trust_tier_to_min_of_inputs(self, engine):
         """
         Given t0 skill + t0 system + t3 discovery responses
@@ -795,6 +823,7 @@ class TestDesignEngineGenerate:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("integration")
+    @pytest.mark.ac("SPEC-160/AC-28")
     async def test_generate_raises_discovery_incomplete(self, engine):
         """
         Given a DiscoveryResult missing a required field
@@ -813,6 +842,7 @@ class TestDesignEngineGenerate:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("integration")
+    @pytest.mark.ac("SPEC-160/AC-29")
     async def test_generate_raises_design_system_not_found(self, engine):
         """
         Given a DiscoveryResult with unknown design_system_slug
@@ -831,6 +861,7 @@ class TestDesignEngineGenerate:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("integration")
+    @pytest.mark.ac("SPEC-160/AC-30")
     async def test_generate_raises_incompatible_design_system(
         self, skill_registry, system_registry
     ):
@@ -873,6 +904,7 @@ class TestDesignEngineGenerate:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("integration")
+    @pytest.mark.ac("SPEC-160/AC-31")
     async def test_generate_raises_skill_mode_error_for_image_without_image_gen(
         self, skill_registry, system_registry
     ):
@@ -967,6 +999,7 @@ class TestDesignEngineGenerate:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("integration")
+    @pytest.mark.ac("SPEC-160/AC-32")
     async def test_generate_raises_trust_banned_error(self, skill_registry, system_registry):
         """
         Given a banish list with a matching pattern
@@ -999,6 +1032,7 @@ class TestDesignEngineGenerate:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("integration")
+    @pytest.mark.ac("SPEC-160/AC-33")
     async def test_generate_creates_trust_review_records(self, skill_registry, system_registry):
         """
         Given a trust_review_queue wired into engine
@@ -1025,6 +1059,7 @@ class TestDesignEngineGenerate:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("integration")
+    @pytest.mark.ac("SPEC-160/AC-34")
     async def test_context_trust_contaminated_by_responses(self, engine):
         """
         Given engine at T0
@@ -1765,9 +1800,108 @@ class TestDesignSystemSkillsMultiFormat:
 # ─── Protocol compliance ──────────────────────────────────────────────────────
 
 
+class TestTrustTierOrdering:
+    """SPEC-160/AC-4 — the ordering the whole trust model rests on."""
+
+    @pytest.mark.ac("SPEC-160/AC-4")
+    def test_ordering_is_t0_highest_through_skull_lowest(self):
+        """`min()` indexes a hardcoded list, so a reordered enum silently
+        inverts trust rather than failing: T0 would become the *least* trusted
+        tier and every `min()` in the engine would keep the wrong side."""
+        from maistro_design.trust import TrustTier
+
+        descending = [
+            TrustTier.T0,
+            TrustTier.T1,
+            TrustTier.T2,
+            TrustTier.T3,
+            TrustTier.SKULL,
+        ]
+        assert list(TrustTier) == descending
+
+        for higher, lower in itertools.pairwise(descending):
+            assert higher.min(lower) is lower
+        assert descending[0].min(descending[-1]) is TrustTier.SKULL
+
+
+class TestBuiltinSkillModeCoverage:
+    """SPEC-160/AC-12 — every mode the enum offers is actually inhabited."""
+
+    @pytest.mark.ac("SPEC-160/AC-12")
+    def test_every_skill_mode_has_a_builtin_except_video_and_audio(self):
+        """A mode with no built-in is a menu entry that leads nowhere: callers
+        can select it, `list_by_mode` returns empty, and nothing says why.
+        Video and audio are excluded deliberately for v0 — asserted as excluded
+        rather than skipped, so shipping one fails here and prompts the update.
+        """
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+        from maistro_design.types import SkillMode
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        inhabited = {mode for mode in SkillMode if registry.list_by_mode(mode)}
+
+        assert inhabited == set(SkillMode) - {SkillMode.VIDEO, SkillMode.AUDIO}
+
+
+class TestDesignOrchestrateNodeContract:
+    """SPEC-160/AC-35, AC-36 — the DAG node's registration contract."""
+
+    @pytest.mark.ac("SPEC-160/AC-35")
+    def test_node_is_registered_under_its_kind(self):
+        from maistro.graph.nodes import get_node
+        from maistro_design.nodes import DesignOrchestrateNode
+
+        assert DesignOrchestrateNode.kind == "design.orchestrate"
+        assert get_node("design.orchestrate") is DesignOrchestrateNode
+
+    @pytest.mark.ac("SPEC-160/AC-36")
+    def test_input_schema_is_a_pydantic_model_that_validates(self):
+        from pydantic import BaseModel
+
+        from maistro_design.nodes import DesignOrchestrateIn, DesignOrchestrateNode
+
+        assert issubclass(DesignOrchestrateNode.input_schema, BaseModel)
+        assert DesignOrchestrateNode.input_schema is DesignOrchestrateIn
+        assert DesignOrchestrateIn.model_json_schema()["type"] == "object"
+
+
+class TestPublicApi:
+    """SPEC-160/AC-39 — the package's advertised surface actually imports."""
+
+    @pytest.mark.ac("SPEC-160/AC-39")
+    def test_public_api_names_are_exported_and_importable(self):
+        """The spec names these as the public API. Importing the module is not
+        the same claim, and neither is `hasattr`: a name dropped from `__all__`
+        still answers `hasattr` because the import above it keeps binding the
+        attribute. `__all__` is the declared surface, so it is what gets
+        asserted — alongside the attribute actually resolving.
+        """
+        import maistro_design
+
+        expected = {
+            "DesignEngine",
+            "DesignSkill",
+            "DesignSystem",
+            "SkillMode",
+            "TrustTier",
+            "InMemoryTrustBanishList",
+            "InMemoryTrustReviewQueue",
+            "InMemoryDesignSkillRegistry",
+            "InMemoryDesignSystemRegistry",
+        }
+        unexported = sorted(expected - set(maistro_design.__all__))
+        assert not unexported, f"not in maistro_design.__all__: {unexported}"
+
+        unresolvable = sorted(n for n in expected if not hasattr(maistro_design, n))
+        assert not unresolvable, f"in __all__ but does not resolve: {unresolvable}"
+
+
 class TestProtocolCompliance:
     @pytest.mark.contract("boundary")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-37")
     def test_skill_registry_isinstance(self, skill_registry):
         """InMemoryDesignSkillRegistry satisfies DesignSkillRegistry protocol."""
         from maistro_design.protocols import DesignSkillRegistry
@@ -1776,6 +1910,7 @@ class TestProtocolCompliance:
 
     @pytest.mark.contract("boundary")
     @pytest.mark.scope("unit")
+    @pytest.mark.ac("SPEC-160/AC-38")
     def test_system_registry_isinstance(self, system_registry):
         """InMemoryDesignSystemRegistry satisfies DesignSystemRegistry protocol."""
         from maistro_design.protocols import DesignSystemRegistry

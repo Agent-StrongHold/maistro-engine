@@ -156,35 +156,32 @@ Scenario: Single-file output is a file artifact
   When generate() is called
   Then output.root.kind == "file"
   And output.root.format == MARKDOWN
-  Note: generate() always wraps the assembled prompt stack as Markdown
-  (_build_output() hardcodes format=OutputFormat.MARKDOWN) — it never
-  branches on a skill's declared output_formats, since it has not called
-  an LLM and so has no real HTML/CSS/JS content to format as. A skill's
-  output_formats only constrains what a caller may later assemble via
-  build_multimodal_output() once it has real per-format content.
+  # generate() always wraps the assembled prompt stack as Markdown
+  # (_build_output() hardcodes format=OutputFormat.MARKDOWN) — it never
+  # branches on a skill's declared output_formats, since it has not called
+  # an LLM and so has no real HTML/CSS/JS content to format as. A skill's
+  # output_formats only constrains what a caller may later assemble via
+  # build_multimodal_output() once it has real per-format content.
 
 Scenario: Multi-file landing page (HTML+CSS+JS)
-  Given a caller has already produced separate HTML/CSS/JS content (e.g. from
-  per-format LLM calls downstream of generate())
+  Given a caller has already produced separate HTML/CSS/JS content (e.g. from per-format LLM calls downstream of generate())
   When build_multimodal_output({HTML: html_text, CSS: css_text, JS: js_text}, trust_tier=tier) is called
   Then output.root.kind == "container"
   And output.root.children contains "html", "css", "js", each kind="file"
 
 Scenario: PNG output is a blob
-  Given a caller has already produced PNG bytes (e.g. from an ImageGenClient call
-  downstream of generate())
+  Given a caller has already produced PNG bytes (e.g. from an ImageGenClient call downstream of generate())
   When build_multimodal_output({PNG: png_bytes}, trust_tier=tier) is called
   Then output.root.kind == "blob", format=PNG, value is bytes
 
 Scenario: SVG with nested typography hierarchy (caller-assembled)
-  Given a caller hand-builds an ArtifactNode tree with a nested "typography"
-  container (e.g. from per-section TypographyRenderer output)
+  Given a caller hand-builds an ArtifactNode tree with a nested "typography" container (e.g. from per-section TypographyRenderer output)
   When the caller scans it via scan_design_output() before persisting
   Then nested containers are supported structurally
   And findings are tagged with their full dotted address (e.g. "typography.header: ...")
-  Note: build_multimodal_output()'s flat dict signature builds one level of
-  nesting (format -> leaf); deeper hand-built hierarchies remain a caller
-  concern, consistent with "Out of scope" below.
+  # build_multimodal_output()'s flat dict signature builds one level of
+  # nesting (format -> leaf); deeper hand-built hierarchies remain a caller
+  # concern, consistent with "Out of scope" below.
 
 Scenario: Warden scan detects <script> injection in HTML output
   Given output containing "<script>alert(1)</script>"

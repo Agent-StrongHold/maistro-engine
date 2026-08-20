@@ -37,9 +37,11 @@ class TestPatternMatching:
             ("agent.*", "", False),
         ],
     )
+    @pytest.mark.ac("SPEC-070226-b234/AC-2")
     def test_glob(self, pattern: str, event_type: str, expected: bool) -> None:
         assert pattern_matches(pattern, event_type) is expected
 
+    @pytest.mark.ac("SPEC-070226-b234/AC-2")
     def test_disabled_trigger_never_matches(self) -> None:
         t = TriggerDefinition(event_pattern="agent.*", enabled=False)
         assert not t.matches("agent.created")
@@ -82,6 +84,7 @@ class TestTriggerStore:
         assert await store.get(t.trigger_id) is None
         assert await store.list_triggers() == []
 
+    @pytest.mark.ac("SPEC-070226-b234/AC-2")
     async def test_get_matching(self, store: TriggerStore) -> None:
         t1 = TriggerDefinition(name="agents", event_pattern="agent.*")
         t2 = TriggerDefinition(name="tasks", event_pattern="task.*")
@@ -92,6 +95,7 @@ class TestTriggerStore:
         matched = await store.get_matching("agent.created")
         assert {t.name for t in matched} == {"agents", "exact"}
 
+    @pytest.mark.ac("SPEC-070226-b234/AC-2")
     async def test_set_enabled_excludes_from_matching(self, store: TriggerStore) -> None:
         t = TriggerDefinition(name="agents", event_pattern="agent.*")
         await store.add(t)

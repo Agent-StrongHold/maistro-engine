@@ -140,7 +140,9 @@ Feature: Gateway discovery and manual connect
     Given at least one gateway advertisement is visible for the configured DNS-SD service type
     When the user selects a discovered row and taps Connect
     Then the app uses the discovered host and port
+```
 
+```gherkin
 Feature: Chat on session main
   Scenario: Send and receive on main session
     Given the node is paired and connected
