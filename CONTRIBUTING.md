@@ -40,7 +40,7 @@ Detail: [`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md) §front-matte
 
 ## How to cite substrate
 
-Use `<repo>#<ID>` in front-matter references, where `<ID>` is `ADR-NNN`/`SPEC-NNN` (legacy, frozen) or `ADR-MMDDYY-xxxx`/`SPEC-MMDDYY-xxxx` (current — see [`ADR-062026-9b30`](docs/adr/ADR-062026-9b30-date-based-adr-spec-ids.md)). Valid repos: `maistro-engine`, `Project_mAIstro`, `AgentTuring`, `stronghold` (the latter three are transitional cross-repo refs while sibling trees consolidate into this monorepo — see [`CONSOLIDATION-PLAN.md`](docs/archive/CONSOLIDATION-PLAN.md)). Examples:
+Use `<repo>#<ID>` in front-matter references, where `<ID>` is `ADR-NNN`/`SPEC-NNN` (legacy, frozen) or `ADR-MMDDYY-xxxx`/`SPEC-MMDDYY-xxxx` (current — see [`ADR-062026-9b30`](docs/adr/ADR-062026-9b30-date-based-adr-spec-ids.md)). Valid repos: `maistro-engine`, `Project_mAIstro`, `AgentTuring`, `stronghold` (the latter three are transitional cross-repo refs while sibling trees consolidate into this monorepo). Examples:
 
 - `maistro-engine#ADR-036` — engine architectural decision (legacy ID)
 - `maistro-engine#ADR-061526-f383` — engine architectural decision (current, date-based ID)

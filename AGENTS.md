@@ -32,7 +32,7 @@ Shared Python runtime and monorepo substrate for AI agent platforms: orchestrato
 - **Canvas:** `packages/maistro-canvas/src/maistro_canvas/`
 - **Turing extensions:** `packages/maistro-turing/src/maistro_turing/`
 - **ADRs:** `docs/adr/`
-- **Consolidation context:** [CONSOLIDATION-PLAN.md](docs/archive/CONSOLIDATION-PLAN.md), [CLAUDE.md](CLAUDE.md)
+- **Project context:** [CLAUDE.md](CLAUDE.md)
 
 ## PR conventions
 
