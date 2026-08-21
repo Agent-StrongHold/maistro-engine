@@ -172,7 +172,7 @@ Dominant constraint: multi-tenant isolation. See [`stronghold/ROADMAP-v1.0.md`](
 
 #### `maistro-engine` (Hive Conductor) — distribution & frontend completion
 
-Migrated from the archived `docs/archive/MASTER-PLAN.md` + `docs/archive/PRODUCT-SPEC.md`; detail in `BACKLOG.md` `[engine-100]`–`[engine-105]`.
+Detail in `BACKLOG.md` `[engine-100]`–`[engine-105]`.
 
 | Item | Status | Detail |
 |---|---|---|

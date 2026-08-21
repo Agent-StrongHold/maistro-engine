@@ -62,7 +62,7 @@ Reference: NIST AI 100-1, NIST AI 100-2 (Generative AI Profile).
 |---|---|---|
 | GOVERN-1 (Policies, processes, structures) | Sentinel declarative policy layer, DB-backed + RBAC-editable + YAML/JSON export (ADR-073) | 🟡 (policy model specified; DB-backed online-editable tunables are `gap-impl` per ADR-073 "Out of scope: on-disk schema") |
 | GOVERN-2 (Accountability) | Sentinel decision audit (`security/sentinel/audit.py`) + ADR-037 event log | 🟡 (audit trail exists; VC signing is `gap-impl`, see AT-08) |
-| GOVERN-3 (Workforce / culture) | `CLAUDE.md`, ADR ladder (`docs/adr/`), `docs/TURING-MIGRATION-SPEC.md` | ✅ |
+| GOVERN-3 (Workforce / culture) | `CLAUDE.md`, ADR ladder (`docs/adr/`) | ✅ |
 | GOVERN-4 (Engagement / oversight) | ADR-068 elevation ladder + approval gate (`tools/approval/gate.py`) | 🟡 — see AT-09: no grant-issuing surface exists and `ApprovalGate` has no implementations (#346) |
 | GOVERN-5 (Lifecycle) | Front-matter status lifecycle (ADR-031, enforced by `maistro-registry` CI, `registry.yml`) | ✅ |
 
@@ -102,7 +102,7 @@ Reference: Regulation (EU) 2024/1689, Articles 9–15, 17, 26.
 |---|---|---|---|
 | **Art. 9** | Risk-management system | ADR-072 threat model + this COMPLIANCE.md | ✅ |
 | **Art. 10** | Data governance | Memory scope axes (global→org→team→user→agent→session, ADR-019 Decision 7) + Sentinel PII filter (`security/sentinel/pii_filter.py`) + secret redaction on both log pipelines (`security/redact.py` installed by `security/log_redaction.py`, ADR-064) | `formal/models/test_memory_scopes.py`; `formal/models/test_pii_filter.py`; `packages/maistro-core/tests/security/test_redact.py`; `packages/maistro-core/tests/security/test_log_redaction.py` | 🟡 (redaction is operative, but **log output only**; the PII filter runs inside the Sentinel post-call pipeline, which the Conductor chat path does not traverse — #350) |
-| **Art. 11** | Technical documentation | ADR ladder (`docs/adr/`, 100+ ADRs) + `docs/TURING-MIGRATION-SPEC.md` + `CLAUDE.md` | ✅ |
+| **Art. 11** | Technical documentation | ADR ladder (`docs/adr/`, 100+ ADRs) + `CLAUDE.md` | ✅ |
 | **Art. 12** | Record-keeping | Sentinel decision audit + durable event log (`events/`) | 🟡 (retention policy per event kind is `gap-spec` — ADR-037/055 define tiers but no engine-wide retention default is codified outside the `sensitive`/`secret` tiers) |
 | **Art. 13** | Transparency to users | Warden flag-and-warn responses (`security/warden/flag_response.py`) surface why content was blocked/flagged | `formal/models/test_flag_response.py` | ✅ |
 | **Art. 14** | Human oversight | ADR-068 elevation ladder (self-elevation / scoped-2FA / delegated / admin) is the mechanism; multi-tenant deployer-facing oversight UI is Stronghold's | — (deferred to importing product (Stronghold) per ADR-019) |
