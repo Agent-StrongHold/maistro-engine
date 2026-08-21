@@ -1,10 +1,9 @@
 # Roadmap
 
-One product, several deployment variants, one shared substrate. The substrate is
-the `maistro-*` package set in this repo; each variant is a Copier template plus
-the packages it turns on. [`BACKLOG.md`](BACKLOG.md) is the item-level companion.
-The source split that defines substrate-vs-variant is
-[`engine#ADR-019`](docs/adr/ADR-019-canonical-source-split.md).
+One product in one monorepo. The shared substrate and every variant live here
+together: a variant is a Copier template plus the packages it turns on, not a
+separate repository. [`BACKLOG.md`](BACKLOG.md) is the item-level companion; the
+substrate-vs-variant split is [`engine#ADR-019`](docs/adr/ADR-019-canonical-source-split.md).
 
 ## Item ID convention (per [`engine#ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md))
 
@@ -20,23 +19,24 @@ Every roadmap and backlog item is tagged by the part of the product it belongs t
 ## The system at a glance
 
 ```
-                    ┌─────────────────────────────────────┐
-                    │           maistro-engine            │
-                    │  shared runtime · ADRs · registry   │
-                    │        · Copier templates           │
-                    └──────────────────┬──────────────────┘
-                                       │ one substrate, three variants
-          ┌────────────────────────────┼────────────────────────────┐
-          ▼                            ▼                            ▼
-  ┌────────────────┐          ┌────────────────┐          ┌────────────────┐
-  │   Conductor    │          │   Autonoetic   │          │  Multi-tenant  │
-  │ single-tenant  │          │  continuity    │          │  hard isolation│
-  │  multi-user    │          │    of self     │          │  + compliance  │
-  │  self-hosted   │          │   24/7 loop    │          │   (Stronghold) │
-  └────────────────┘          └────────────────┘          └────────────────┘
-  hive-conductor +            maistro-turing +            planned downstream
-  templates/single-           templates/autonoetic        templates/multi-tenant
-  tenant-multi-user
+┌──────────────────────── maistro-engine (this monorepo) ────────────────────────┐
+│                                                                                │
+│  Substrate    packages/maistro-core · -server · -canvas · -evolve · -rsi       │
+│               · -registry · -design · -bootstrap  +  docs/adr  +  templates/   │
+│                                                                                │
+│  ── variants, composed from that substrate ──────────────────────────────────  │
+│                                                                                │
+│  Conductor          packages/hive-conductor        templates/single-tenant-…   │
+│  single-tenant      + maistro-core                                             │
+│  multi-user                                                                    │
+│                                                                                │
+│  Autonoetic         packages/maistro-turing        templates/autonoetic        │
+│  continuity of self + maistro-core                                             │
+│                                                                                │
+│  Multi-tenant       planned downstream build       templates/multi-tenant      │
+│  isolation +        (Stronghold)                                               │
+│  compliance                                                                    │
+└────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 | Part | Role | Dominant constraint |
