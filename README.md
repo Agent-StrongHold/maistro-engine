@@ -209,7 +209,6 @@ are operative versus specified.
 ## ADRs and specs
 
 - All architectural decisions are recorded as ADRs under `docs/adr/`.
-- The cross-repo inventory of every ADR and spec lives at [`docs/INVENTORY-ADRS-SPECS.md`](docs/INVENTORY-ADRS-SPECS.md).
 - Front-matter and cross-reference conventions are defined in [`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md); acceptance criteria are layered contracts per [`ADR-032`](docs/adr/ADR-032-contracts-as-acceptance-criteria.md).
 - **Legacy archives:** the former `potential-dead-code/` reference trees were **removed** once their behavior shipped under `packages/` ([`SPEC-178`](docs/specs/SPEC-178-legacy-snapshot-retention.md)); provenance remains in git history and the sibling repos.
 
@@ -229,7 +228,6 @@ maistro-engine/
 ├── docs/
 │   ├── adr/                          # Architecture Decision Records
 │   ├── specs/                        # Numbered engine specs (SPEC-NNN)
-│   └── INVENTORY-ADRS-SPECS.md       # Cross-repo ADR/spec inventory
 ├── packages/
 │   ├── maistro-core/                 # The library
 │   ├── maistro-server/               # FastAPI surface

@@ -32,7 +32,6 @@ Shared Python runtime and monorepo substrate for AI agent platforms: orchestrato
 - **Canvas:** `packages/maistro-canvas/src/maistro_canvas/`
 - **Turing extensions:** `packages/maistro-turing/src/maistro_turing/`
 - **ADRs:** `docs/adr/`
-- **Product / gateway specs (sibling repo, must stay current):** `../Project_mAIstro/specs/` — not vendored here. Before work that traces to those requirements, run `./scripts/pull-sibling-product-specs.sh` (or `git pull` in that repo) and **link** the driving `S-NNN-*.md` paths in PRs. See [CONSOLIDATION-PLAN.md](docs/archive/CONSOLIDATION-PLAN.md) § *Sibling product specs*.
 - **Consolidation context:** [CONSOLIDATION-PLAN.md](docs/archive/CONSOLIDATION-PLAN.md), [CLAUDE.md](CLAUDE.md)
 
 ## PR conventions

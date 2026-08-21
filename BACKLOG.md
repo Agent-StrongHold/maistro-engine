@@ -9,7 +9,7 @@
 
 Cross-repo references use `[repo#item-id]` notation.
 
-Maintained per [`engine#ADR-030`](https://github.com/BlakeMatthews-dev/maistro-engine/blob/main/docs/adr/ADR-030-four-repo-governance.md). Status follows [`engine#ADR-031`](https://github.com/BlakeMatthews-dev/maistro-engine/blob/main/docs/adr/ADR-031-front-matter-and-registry.md) lifecycle. Gap markers per [`docs/INVENTORY-ADRS-SPECS.md`](https://github.com/BlakeMatthews-dev/maistro-engine/blob/main/docs/INVENTORY-ADRS-SPECS.md). External-library adoption per [`engine#ADR-039`](https://github.com/BlakeMatthews-dev/maistro-engine/blob/main/docs/adr/ADR-039-external-library-adoption-policy.md).
+Maintained per [`engine#ADR-030`](https://github.com/BlakeMatthews-dev/maistro-engine/blob/main/docs/adr/ADR-030-four-repo-governance.md). Status follows [`engine#ADR-031`](https://github.com/BlakeMatthews-dev/maistro-engine/blob/main/docs/adr/ADR-031-front-matter-and-registry.md) lifecycle. External-library adoption per [`engine#ADR-039`](https://github.com/BlakeMatthews-dev/maistro-engine/blob/main/docs/adr/ADR-039-external-library-adoption-policy.md).
 
 ## Status legend
 
@@ -45,7 +45,6 @@ Maintained per [`engine#ADR-030`](https://github.com/BlakeMatthews-dev/maistro-e
 - Tests: contract `boundary | unit` for the validator; `behavioral | property` for the DAG check
 
 **[engine-002] INVENTORY auto-regenerated — Proposed — v1.0 M1**
-- Hand-edits to `docs/INVENTORY-ADRS-SPECS.md` fail CI once tooling lands
 - Blocked-by: `engine-001`
 
 **[engine-003] Front-matter on existing engine ADRs — Accepted; gradual — v1.0 M1**

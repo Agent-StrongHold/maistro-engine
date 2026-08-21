@@ -36,12 +36,7 @@ SKIP_DIRS = {".git", ".venv", "node_modules", "site-packages", "__pycache__"}
 # point at sibling checkouts present only on a deployed host. Keyed by the
 # document that may reference them, so an unrelated file cannot inherit the
 # exemption.
-ALLOWED_OUTSIDE_REPO: dict[str, set[str]] = {
-    "docs/PM_POC_RUNBOOK.md": {
-        "../../../../docs/MAISTRO-ENGINE-SANDBOX.md",
-        "../../../../container_registry/MCP_servers/README.md",
-    },
-}
+ALLOWED_OUTSIDE_REPO: dict[str, set[str]] = {}
 
 FENCE = re.compile(r"^\s*(```|~~~)")
 CODE_SPAN = re.compile(r"`[^`]*`")
