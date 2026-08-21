@@ -2,11 +2,6 @@
 
 ## Why
 
-## Feature freeze (until `v1.0.0` is tagged)
-
-- [ ] This PR is a **tracked item** in [`docs/product/V1-RELEASE-PLAN.md`](../docs/product/V1-RELEASE-PLAN.md) — workstream/item: `____` (e.g. `C1 / #286`)
-- [ ] …or it is a **stabilization / deployability fix** for a tracked item (allowed). New features are not.
-
 ## Checks
 
 - [ ] Base branch is `develop` (topic branches) — see [`ADR-095`](../docs/adr/ADR-095-four-tier-branch-model.md)

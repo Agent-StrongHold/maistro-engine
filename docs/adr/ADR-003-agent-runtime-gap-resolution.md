@@ -52,7 +52,7 @@ The analysis identified five gaps in maistro-engine relative to that reference r
 
 ## Decision
 
-1. Keep a **neutral** summary in [`docs/analysis/agent-runtime-gap-analysis.md`](../analysis/agent-runtime-gap-analysis.md). The original vendor-specific comparison text was removed per repository naming policy.
+1. Keep a **neutral** summary of the agent-runtime gaps in this ADR. The original vendor-specific comparison text was removed per repository naming policy.
 2. Delete the orphaned branch once this ADR is committed to `integration`. Its only unique content is captured here and in the gap-analysis stub.
 3. Treat the five gaps as the north-star for the porting backlog: each gap is closed by a specific tranche.
 

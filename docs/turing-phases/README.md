@@ -127,7 +127,7 @@ A phase is complete when:
 
 ### Source repo
 
-AgentTuring source of truth: `/vmpool/github/stronghold/research/project-turing/sketches/`
+AgentTuring source of truth: the private AgentTuring research repository (internal).
 
 ```
 turing/              # 109 Python files, ~19,300 lines
