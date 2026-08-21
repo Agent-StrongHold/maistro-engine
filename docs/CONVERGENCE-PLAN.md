@@ -1,11 +1,18 @@
 # Convergence Plan
 
-**Baseline:** `develop` @ 9f8e6e8d (PR #476 merged) · **Date:** 2026-08-20
+**Historical measurement baseline:** `develop` @ 9f8e6e8d (PR #476 merged) · **Date:** 2026-08-20
+**Governing migration-order decision:** `ADR-082126-c9f4` / `SPEC-082126-c9f4`
+**Current operational queue:** [`BACKLOG.md`](../BACKLOG.md)
 **Rendered version:** https://claude.ai/code/artifact/8eef8a01-a9de-4536-bb43-bc4dc9ccf3b8
 
 The execution spine is built and Accepted. Almost nothing uses it. This plan converges every
 producer, island, and boundary onto it, measured per acceptance criterion, then deletes the
 scaffolding and ships v1.
+
+The stage descriptions below describe migration dependencies and required outcomes. Operational
+priority is convergence-first under ADR-082126-c9f4. A replacement may move immediately ahead of
+a convergence connection only when that exact connection would otherwise wire a disposable
+predecessor; only the minimum replacement seam jumps, then convergence resumes.
 
 ## Ground truth
 
@@ -33,6 +40,11 @@ seam, and `HarnessSessionManager` exposes an ungoverned `send()` next to the gov
 **Status is derived, never asserted.** Every stage exits by moving criteria up the ladder
 (`declared -> covered -> passing -> reachable`), so progress self-reports on every run of
 `python scripts/check-ac-state.py --run-tests`.
+
+**Convergence is the default priority.** Optional product/frontier work does not displace the next
+dependency-valid convergence slice. The only queue-jump is ADR-082126-c9f4's
+replacement-before-connection exception, and it ends as soon as the minimum replacement seam is
+available.
 
 Three numbers to watch: criteria at `reachable` (up), the reachability baseline (down from 234),
 untagged scenarios (down from 64).
@@ -98,14 +110,18 @@ reachability baseline.
 Order: Builders, then RSI/Evolve, then Canvas/Design. Turing stays optional (out of v1 scope).
 
 1. Builders (done in 3.4; the island template the others copy).
-2. RSI — coordinator/autorun/RsiRunner mint Runs; `local_loop` subprocess work becomes Attempts
+2. **Immediately before RSI consumes backlog state, execute R1 from `BACKLOG.md`:** establish the
+   minimum Workspace-owned structured backlog repository/service seam plus Markdown import/export.
+   Do not wire RSI to a disposable Markdown runtime contract, and do not build the full backlog UI
+   before returning to convergence.
+3. RSI — coordinator/autorun/RsiRunner mint Runs; `local_loop` subprocess work becomes Attempts
    under ExecutionRuntime with lease/fencing.
-3. Evolve — `cycle.run_cycle` becomes a graph; each tournament battle a NodeRun.
-4. Canvas/Design — pipeline stages become nodes; import `maistro_design.nodes` in the hive
+4. Evolve — `cycle.run_cycle` becomes a graph; each tournament battle a NodeRun.
+5. Canvas/Design — pipeline stages become nodes; import `maistro_design.nodes` in the hive
    node-registration path; converge hive `canvas_dag`.
-5. Wire the P1 resilience layer: `depth` into subgraph spawn, `compaction`+`steering` into the
+6. Wire the P1 resilience layer: `depth` into subgraph spawn, `compaction`+`steering` into the
    durable run loop, `retry_policy`+`rate_coordination`+`context_probe` into ExecutionRuntime.
-6. Hive `chat_completion.py` — the 2,396-line bespoke agent loop, largest item in the plan.
+7. Hive `chat_completion.py` — the 2,396-line bespoke agent loop, largest item in the plan.
    Decompose onto the conduit path and the tool boundary, behind parity tests, last.
 
 **Exit:** builders/rsi/evolve/canvas reachability clusters ~ 0; every island's work visible as
@@ -150,18 +166,19 @@ machine-verified, v1 tagged and signed.
 
 ## Sequencing
 
+Operational sequencing is convergence-first under ADR-082126-c9f4. The current fine-grained
+queue lives in `BACKLOG.md`; this table records the dependency order of the stages in this plan.
+
 | Order | Work | Depends on |
 |---|---|---|
-| now | Phase 0 (all five items) | — |
-| now | 2.1 spine-spec retrofit | — |
-| next | 2.2-2.5 workspace wiring + ownership + fence | 2.1 |
-| trunk | 3.1 tasks->Run, then 3.2 chat->Run | 2.3 |
-| parallel | 5.1-5.2 governance seam + twin door | independent |
-| then | 3.3-3.8 producers; 4.2-4.5 islands + P1 wiring | 3.1/3.2, 5.1 |
-| then | 5.3-5.6 single egress + burn-down + AC-8 gate | 3.7 |
-| then | 4.6 chat_completion decomposition (parity tests first) | 3.2, 5.3 |
-| then | Stage 6 observability + correlation | 5.3 |
-| last | Stage 7 deletions, gate flip, v1 | everything |
+| complete | Phase 0 measurement loop | — |
+| next | Stage 2.2-2.5 Workspace/Project/Persona/Template wiring + architecture fence | Stage 2.1 |
+| then | Stage 3 producers -> canonical Run | Stage 2 ownership/scope |
+| then | Stage 4 product islands -> spine | Stage 3; R1 runs only immediately before RSI backlog consumption |
+| then | Stage 5 universal governed Binding/Invocation enforcement | migrated execution paths from Stages 3-4 |
+| then | Stage 6 event/recovery/observability correlation | single governed egress from Stage 5 |
+| last | Stage 7 duplicate-owner deletion, gate flip, v1 | Stages 2-6 |
 
-Two threads run continuously alongside: the per-layer spec retrofit (write criteria when touching
-a layer's code), and the ratchets staying monotone (CI already enforces those).
+Two threads run continuously alongside without displacing the convergence trunk: the per-layer
+spec retrofit (write criteria when touching a layer's code), and the ratchets staying monotone
+(CI already enforces those).
