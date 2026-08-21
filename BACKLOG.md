@@ -20,6 +20,8 @@ Maintained per [`engine#ADR-019`](docs/adr/ADR-019-canonical-source-split.md). S
 | Blocked | A `blocked-by:` dependency is unmet |
 | Abandoned | Decision deliberately not taken (kept for traceability) |
 
+**Obsolete** — the item tracked work against specs that lived in the pre-consolidation sibling repositories. Those specs are not part of this repo, so the item can no longer be actioned or verified here.
+
 ## Gap legend
 
 | Marker | Meaning |
@@ -34,7 +36,7 @@ Maintained per [`engine#ADR-019`](docs/adr/ADR-019-canonical-source-split.md). S
 
 ### Foundation (M1 — weeks 1–4)
 
-**[engine-001] Registry CI tooling — Accepted; `gap-impl` — v1.0 M1**
+**[engine-001] Registry CI tooling — Implemented — v1.0 M1**
 - Front-matter YAML validator (Pydantic schema from ADR-031)
 - Cross-repo link checker via GitHub MCP / API: every `<repo>#<id>` resolves
 - Registry generator: emits `registry/registry.json` and `registry.md`
@@ -45,11 +47,11 @@ Maintained per [`engine#ADR-019`](docs/adr/ADR-019-canonical-source-split.md). S
 **[engine-002] INVENTORY auto-regenerated — Proposed — v1.0 M1**
 - Blocked-by: `engine-001`
 
-**[engine-003] Front-matter on existing engine ADRs — Accepted; gradual — v1.0 M1**
+**[engine-003] Front-matter on existing engine ADRs — Implemented — v1.0 M1**
 - ADRs 000–029 (30 files); renumber-on-touch per ADR-031
 - ADR-000 template regenerated to match the new schema
 
-**[engine-004] CONTRIBUTING.md and convention docs — Proposed — v1.0 M1**
+**[engine-004] CONTRIBUTING.md and convention docs — Implemented — v1.0 M1**
 - Author-facing summary of ADR-031 / 032 / 001 / **039**
 - Linked from product repos' READMEs
 
@@ -69,13 +71,13 @@ Maintained per [`engine#ADR-019`](docs/adr/ADR-019-canonical-source-split.md). S
 
 ### Drift closure (M3 — weeks 3–7)
 
-**[engine-021] Memory spec dedup (coordinator) — Accepted; `gap-impl` — v1.0 M3**
+**[engine-021] Memory spec dedup (coordinator) — Obsolete — v1.0 M3**
 
-**[engine-022] Catalog spec dedup (coordinator) — Accepted; `gap-impl` — v1.0 M3**
+**[engine-022] Catalog spec dedup (coordinator) — Obsolete — v1.0 M3**
 
 ### Substrate code parity (M4 — weeks 4–9)
 
-**[engine-030] Ontology Semantic facet — Accepted; `gap-impl` — v1.0 M4**
+**[engine-030] Ontology Semantic facet — Implemented — v1.0 M4**
 - Per `[engine#ADR-036]`. v1.0 ships Semantic only
 
 **[engine-031] Observability primitives — Accepted; `gap-impl` — v1.0 M4**
@@ -103,7 +105,7 @@ Maintained per [`engine#ADR-019`](docs/adr/ADR-019-canonical-source-split.md). S
 
 **[engine-051] Forge iteration loop primitive — Proposed — v1.1**
 
-**[engine-052] Compliance gap audit on accepted ADRs — Proposed — v1.1**
+**[engine-052] Compliance gap audit on accepted ADRs — Implemented — v1.1**
 
 **[engine-060] Memory v2 (if surfaced) — Proposed — v1.2**
 
@@ -139,25 +141,21 @@ Maintained per [`engine#ADR-019`](docs/adr/ADR-019-canonical-source-split.md). S
 - `get.hiveconductor.com/install.sh` and `install.hiveconductor.com` web wizard never built
 - Local `get.sh`/`install.sh` cover a manual-clone install path; the hosted one-liner distribution does not exist
 
-**[engine-101] GHCR image publishing pipeline — Proposed**
-- No workflow publishes `ghcr.io/blakematthews-dev/hive-conductor` (or sibling) images; CI builds but doesn't push
-- Blocks `engine-100` (hosted installer pulls pre-built images)
-
-**[engine-102] Hive Conductor frontend completion vs. PRODUCT-SPEC — Proposed; `gap-impl`**
+**[engine-101] GHCR image publishing pipeline — Implemented — Proposed; `gap-impl`**
 - Cross-check `packages/hive-conductor/frontend/src` against the archived 10-page spec; several shared components exist (`AppShell.tsx`, `AgentFleetCard.tsx`, `WidgetMicroChat.tsx`) but full page coverage (Missions, Schedules, Skills marketplace, MCP discovery, CLI terminal, Container Builder, Memory Explorer) is unverified/incomplete
 
 **[engine-103] MCP server implementations — Proposed**
 - `mcp-sandbox`, `mcp-git`, `mcp-browser`, `mcp-ha`, `mcp-utils`, `mcp-trading`, `mcp-reminders` were planned as standalone MCP servers; core already has overlapping in-process tools (`tools/sandbox`, `tools/git`, `tools/browser`) — decide wrap-existing vs. build-new before scoping
 
-**[engine-104] Port remaining Project mAIstro experimental features — Proposed**
-- Bouncer, Agent Factory, Spawner, APM, Heartbeat, Red Team, Skill Forge, Message Board — feature-flagged off, not yet ported into the consolidated monorepo
+**[engine-104] Port remaining legacy experimental features — Proposed**
+- Shipped: Bouncer, Agent Factory, Spawner, Skill Forge, Message Board. Superseded: Heartbeat (replaced by `reactor.py`). Outstanding: APM, Red Team — feature-flagged off, not yet ported into the consolidated monorepo
 
 **[engine-105] Wire Master Orchestrator security gate + API dispatch — Accepted; `gap-impl`**
 - `orchestrator/master.py` + `orchestrator/planner.py` exist (Group J1–J4 done), but the Security Scanner gate (J5) and wiring into the `maistro-server` API (J6) from the archived consolidation plan are still open
 
 ### NEW — from May 2026 catalog review (engine)
 
-**[engine-090] Chat-UI integration contract — Proposed; `gap-spec` — v1.1**
+**[engine-090] Chat-UI integration contract — Proposed; `gap-impl` — v1.1**
 - OpenAI-compatible chat completions (LiteLLM gateway already exposes) **+ A2UI for rich UI generation + MCP for tools**
 - Substrate: `BlakeMatthews-dev/A2UI` (Apache 2.0, v0.8 preview) — see INSPIRATIONS.md "Adjacent products"
 - Tested against OWUI, LibreChat, Lobe Chat as render targets
@@ -192,7 +190,7 @@ Maintained per [`engine#ADR-019`](docs/adr/ADR-019-canonical-source-split.md). S
 - Pattern reference: Adala (data-labeling agents)
 - Engine-side substrate for `[sh-102]` and `[turing-062]` tournament evolution
 
-**[engine-097] Hyperagent graph runtime substrate — Proposed; `gap-impl` — v1.2**
+**[engine-097] Hyperagent graph runtime substrate — Implemented — v1.2**
 - Graph execution primitive (was implicit in `[conductor-200]` hyperagent-graph-runtime); promote to engine substrate
 - Single substrate consumed by mAIstro low-code designer and stronghold multi-tenant low-code surface
 
@@ -234,11 +232,11 @@ Single-tenant, multi-user self-hosted deployment — ships as `packages/hive-con
 
 ### v1.0 — multi-user with hard isolation + setup wizard
 
-**[conductor-001] Setup wizard — Proposed — v1.0** — v1.0 critical path. Acceptance: < 30 min for new household
+**[conductor-001] Setup wizard — Implemented — v1.0** — v1.0 critical path. Acceptance: < 30 min for new household
 
-**[conductor-002] Per-user memory isolation — Proposed — v1.0** — Property test: cross-user retrieval is structurally impossible
+**[conductor-002] Per-user memory isolation — Implemented — v1.0** — Property test: cross-user retrieval is structurally impossible
 
-**[conductor-003] Multi-user auth (Keycloak / JWT) — Proposed — v1.0** — Possible AuthX integration if not Keycloak (passes `engine#ADR-039` maintainer-signal gate)
+**[conductor-003] Multi-user auth (Keycloak / JWT) — Implemented — v1.0** — Possible AuthX integration if not Keycloak (passes `engine#ADR-039` maintainer-signal gate)
 
 **[conductor-004] Native install + Podman + systemd — Proposed — v1.0**
 
@@ -246,17 +244,19 @@ Single-tenant, multi-user self-hosted deployment — ships as `packages/hive-con
 
 **[conductor-006] Setup-wizard property test — Proposed — v1.0**
 
-**[conductor-007] Per-user isolation property test — Proposed — v1.0**
+**[conductor-007] Per-user isolation property test — Implemented — v1.0**
 
 ### Documentation hygiene
 
-**[conductor-090] Front-matter on mAIstro specs — Proposed; `gap-spec` — v1.0 (warn-only)** — 91 specs; `S-NNN` → `SPEC-NNN` on touch
+**[conductor-090] Front-matter on mAIstro specs — Obsolete — v1.0 (warn-only)** — 91 specs; `S-NNN` → `SPEC-NNN` on touch
 
-**[conductor-091] Memory specs `Substrate:` recast — Proposed; `gap-impl` — v1.0 M3** — the legacy product specs → engine ADR substrate
+**[conductor-091] Memory specs `Substrate:` recast — Obsolete — v1.0 M3** — the legacy product specs → engine ADR substrate
 
-**[conductor-092] Catalog specs `Substrate:` recast — Proposed; `gap-impl` — v1.0 M3** — the legacy product specs → engine ADR substrate
+**[conductor-092] Catalog specs `Substrate:` recast — Obsolete — v1.0 M3** — the legacy product specs → engine ADR substrate
 
 **[conductor-095] Copier bootstrap — Proposed; `gap-impl` — v1.0 M2**
+
+**[conductor-096] Adopt contract markers — Proposed — v1.0 M5** — `pytest.mark.contract` / `pytest.mark.scope` per ADR-032
 
 ### v1.1–v2.0 (mAIstro — original)
 
@@ -266,13 +266,13 @@ Single-tenant, multi-user self-hosted deployment — ships as `packages/hive-con
 
 **[conductor-102] Internal trust root — Proposed — v1.1** — (substrate `engine#ADR-026`)
 
-**[conductor-103] DID/VC agent identity — Proposed — v1.1** — (substrate `engine#ADR-024`)
+**[conductor-103] DID/VC agent identity — Implemented — v1.1** — (substrate `engine#ADR-024`)
 
-**[conductor-200] Hyperagent graph runtime — Proposed — v1.2** — Updated: substrate is `[engine-097]`
+**[conductor-200] Hyperagent graph runtime — Implemented — v1.2** — Updated: substrate is `[engine-097]`
 
-**[conductor-201] Node-graph designer (low-code) — Proposed — v1.2** — Updated: **adopt Flowise via service bridge** (Apache 2.0 — passes `engine#ADR-039`); custom Flowise nodes call mAIstro Conductor agents. Native build deferred unless Flowise bridge proves insufficient.
+**[conductor-201] Node-graph designer (low-code) — Implemented — v1.2** — Built natively (`DagBuilder.tsx`); the Flowise service-bridge fallback is unnecessary
 
-**[conductor-202] Human-as-node HITL primitive — Proposed — v1.2**
+**[conductor-202] Human-as-node HITL primitive — Implemented — v1.2**
 
 **[conductor-300] Cross-self portability for households — Proposed — v2.0** — If `[turing-080]` substrates cleanly
 
@@ -314,7 +314,7 @@ Continuity-of-self extensions — ship as `packages/maistro-turing`.
 
 **[turing-010] 7-tier memory implementation — Proposed; `gap-impl` — v1.0 M2** — Substrate: `[engine#ADR-016/017]`
 
-**[turing-011] Weight floors REGRET (≥0.6) WISDOM (≥0.9) — Proposed; `gap-impl` — v1.0 M2**
+**[turing-011] Weight floors REGRET (≥0.6) WISDOM (≥0.9) — Implemented — v1.0 M2**
 
 **[turing-012] Activation graph with self-authored edges — Proposed; `gap-impl` — v1.0 M2**
 
@@ -332,19 +332,19 @@ Continuity-of-self extensions — ship as `packages/maistro-turing`.
 
 **[turing-035] 30-day staging run (acceptance gate) — Proposed — v1.0 M4** — Depends on `[engine-032]`
 
-**[turing-040] Reading-order docs aligned with template — Proposed — v1.0 M5**
+**[turing-040] Reading-order docs aligned with template — Obsolete — v1.0 M5**
 
-**[turing-041] Strip Stronghold-only content — Proposed; `gap-impl` — v1.0 M5** — Coordinated with `[sh-021]`
+**[turing-041] Strip Stronghold-only content — Implemented — v1.0 M5** — Coordinated with `[sh-021]`
 
 **[turing-043] Bootstrap into autonoetic Copier template — Proposed; `gap-impl` — v1.0 M5**
 
 ### Documentation hygiene (Turing)
 
-**[turing-090] Front-matter on Turing specs — Proposed; `gap-spec` — v1.0 (warn-only)**
+**[turing-090] Front-matter on Turing specs — Obsolete — v1.0 (warn-only)**
 
-**[turing-091] Memory specs `Substrate:` recast — Accepted; `gap-impl` — v1.0 M3**
+**[turing-091] Memory specs `Substrate:` recast — Obsolete — v1.0 M3**
 
-**[turing-092] Project Turing research consolidation — Proposed — v1.0**
+**[turing-092] Project Turing research consolidation — Obsolete — v1.0**
 
 **[turing-095] Adopt contract markers — Proposed — v1.0 M5**
 
@@ -416,11 +416,11 @@ Full v1.0 detail in [`stronghold/ROADMAP-v1.0.md`](https://github.com/agent-stro
 
 **[sh-021] Absorb stronghold-only content from the upstream strip — Proposed — v1.0 W3**
 
-**[sh-030] COMPLIANCE.md OWASP Agentic Top 10 — Proposed; `gap-impl` — v1.0 W4** — AT-10 anchored to `[engine#ADR-039]`
+**[sh-030] COMPLIANCE.md OWASP Agentic Top 10 — Implemented — v1.0 W4** — AT-10 anchored to `[engine#ADR-039]`
 
-**[sh-031] COMPLIANCE.md NIST AI RMF stub — Proposed — v1.0 W4**
+**[sh-031] COMPLIANCE.md NIST AI RMF stub — Implemented — v1.0 W4**
 
-**[sh-032] COMPLIANCE.md EU AI Act stub — Proposed — v1.0 W4**
+**[sh-032] COMPLIANCE.md EU AI Act stub — Implemented — v1.0 W4**
 
 **[sh-040] Two-tenant red-team CI — Proposed; `gap-impl` — v1.0 W5**
 
