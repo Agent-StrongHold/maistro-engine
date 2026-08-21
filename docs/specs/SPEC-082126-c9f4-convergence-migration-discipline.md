@@ -125,7 +125,7 @@ Turing, continual improvement, collective learning, RSI, Evolve, and other optio
 
 ### R10. Architecture plan consistency
 
-The coordinated backlog and convergence plan MUST identify ADR-082126-c9f4 as the governing migration-order decision. Neither plan may assert a sequencing rule that contradicts this ADR.
+`docs/CONVERGENCE-PLAN.md` MUST identify ADR-082126-c9f4 as the governing migration-order decision. `BACKLOG.md` MAY restate the operational queue, but neither document may assert a sequencing or queue-jump rule that contradicts this ADR.
 
 ### R11. Pull-request evidence
 
@@ -206,8 +206,9 @@ Feature: Convergence migration discipline
   Scenario: Execution plans cannot override the architecture decision
     Given BACKLOG.md and docs/CONVERGENCE-PLAN.md
     When migration ordering is read from either plan
-    Then both identify ADR-082126-c9f4 as governing
-    And neither defines a conflicting queue-jump rule
+    Then docs/CONVERGENCE-PLAN.md identifies ADR-082126-c9f4 as governing
+    And BACKLOG.md states no conflicting queue-jump rule
+    And docs/CONVERGENCE-PLAN.md states no conflicting queue-jump rule
 
   @AC-11
   Scenario: A migration PR explains its architectural disposition
@@ -225,7 +226,7 @@ Near-term enforcement belongs in the existing convergence work rather than a new
 
 1. extend architecture-fitness CI for AC-5 and AC-6;
 2. use the acceptance-state/reachability gate for AC-7 and AC-8;
-3. keep plan-link consistency covered by documentation/registry tests for AC-10;
+3. keep plan consistency covered by documentation/registry tests for AC-10;
 4. add PR-template wording for AC-11 when the next governance-template change is already in scope.
 
 No separate migration registry or second status system should be created for this spec.
