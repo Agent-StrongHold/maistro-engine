@@ -1,7 +1,7 @@
 """Optional HTTP webhook mirroring task progress (conductor-router shape).
 
-See ``docs/specs/SPEC-175-task-progress-webhook.md``. Ported from
-``Project_mAIstro`` ``ProgressReporter``; failures never propagate to callers.
+See ``docs/specs/SPEC-175-task-progress-webhook.md``. Failures never
+propagate to callers.
 """
 
 from __future__ import annotations

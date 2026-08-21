@@ -105,11 +105,11 @@ COMPOSE_ADDONS: dict[str, ComposeAddon] = {
 
 PRODUCTS: dict[str, tuple[str, str]] = {
     "single-tenant-multi-user": (
-        "Project_mAIstro-shaped product",
+        "Single-tenant multi-user product",
         "templates/single-tenant-multi-user",
     ),
     "autonoetic": (
-        "AgentTuring-shaped product",
+        "Autonoetic product",
         "templates/autonoetic",
     ),
     "multi-tenant": (
