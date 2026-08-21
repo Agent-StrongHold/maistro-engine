@@ -71,7 +71,7 @@ Chat-UI / coding-agent / self-evolving survey. Classified *complementary*, *bett
 - **Hyperagents** (Meta FAIR, arXiv:2603.19461, Mar 2026) — influenced RASO direction *after* April 16, 2026 discovery; inner feedback loop predates discovery (per `stronghold/README.md`).
 - **Adaptive Memory Admission Control** (arXiv:2603.04549) — comparable decay + reinforcement mechanisms; stronghold shipped via CoinSwarm Jan 2026 before discovery (per `stronghold/README.md`).
 - **Governance Architecture** (arXiv:2603.07191) — comparable trust-tier framework; stronghold's 5-tier earned trust independent.
-- **Tulving's autonoetic-noetic taxonomy** — grounding for `AgentTuring/research/project-turing/DESIGN.md`.
+- **Tulving's autonoetic-noetic taxonomy** — grounding for the autonoetic self-model work (`maistro-turing`).
 
 ---
 
@@ -80,7 +80,7 @@ Chat-UI / coding-agent / self-evolving survey. Classified *complementary*, *bett
 Sibling repos under our same accounts; not "external" in the supply-chain sense but worth noting in this ledger:
 
 - **`BlakeMatthews-dev/A2UI`** (Apache 2.0, v0.8 preview) — agent-to-UI declarative protocol; substrate for our chat-UI integration contract (`[engine-090]`).
-- **`BlakeMatthews-dev/AiHass`** — "Home Assistant Operating System" (Python); household-AI substrate sibling for `Project_mAIstro` consumers.
+- **`BlakeMatthews-dev/AiHass`** — "Home Assistant Operating System" (Python); household-AI substrate sibling.
 - **`BlakeMatthews-dev/HAAI-interface`** — placeholder repo (1 commit, no README at survey time); likely the HA ↔ AI bridge.
 - **`BlakeMatthews-dev/kidschores-ha`** — KidsChores HA Custom Integration; mAIstro consumer / household example.
 - **`BlakeMatthews-dev/Fast_Swarm`** — "FastAPI control plane for CoinSwarm evolutionary trading system"; **the origin of the 7-tier memory model** that stronghold lineage cites in `stronghold/README.md`.

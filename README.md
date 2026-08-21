@@ -29,7 +29,7 @@ The shared Python runtime — and the consolidation monorepo — behind the Mais
 - **Canonical ADRs & specs** — architectural decisions and specifications under `docs/adr/` and `docs/specs/`.
 - **Registry CI host** — the front-matter validator, link-checker, and registry generator that enforce doc conventions (`packages/maistro-registry`).
 
-> **History note.** This engine used to be split across sibling repos (`Project_mAIstro`, `stronghold`, `AgentTuring`, `conductor-router`). The canonical shape as of 2026-05 is this single substrate monorepo — sibling trees are being consolidated in additively. Cross-repo `<repo>#<ID>` references in front-matter remain valid during the transition.
+> **History note.** This engine was previously split across several sibling repositories. The canonical shape as of 2026-05 is this single substrate monorepo.
 
 ## What this repo is not
 

@@ -84,7 +84,7 @@ class RegistryEntry:
 
 @dataclass
 class Registry:
-    """Canonical four-repo registry: `<repo>#<id>` → entry."""
+    """Canonical registry: `<repo>#<id>` → entry."""
 
     entries: dict[str, RegistryEntry] = field(default_factory=dict)
 

@@ -33,7 +33,7 @@ The **first** path entry wins for the top-level `maistro` package. Agent spec, r
 | `tui` | TUI / CLI helpers (Typer + Rich) | `uv sync --package maistro-core --extra tui` (see [maistro-core pyproject](../../packages/maistro-core/pyproject.toml)). | None. | N/A |
 | `server` | HTTP API (FastAPI) | Use `packages/maistro-server`: `uv pip install -e ./packages/maistro-server` or run tests from repo with full `uv sync`. | Default stack includes `maistro-engine` service in [docker-compose.yml](../../docker-compose.yml). For slice examples see [compose-slices.example.yml](./compose-slices.example.yml). | N/A |
 | `canvas` | Canvas Studio package | `uv pip install -e ./packages/maistro-canvas` plus root optional `uv sync --extra browser` for Playwright when needed. | None in default compose; add your own profile if you containerize canvas. | N/A |
-| `turing` | Autonoetic extensions | `uv pip install -e ./packages/maistro-turing`. | None in default compose. | Product: **AgentTuring** — scaffold via `templates/autonoetic/` (Copier). |
+| `turing` | Autonoetic extensions | `uv pip install -e ./packages/maistro-turing`. | None in default compose. | Scaffold an autonoetic product via `templates/autonoetic/` (Copier). |
 | `webui` | Open WebUI chat shell | Not a Python extra; use Compose. | See [compose-slices.example.yml](./compose-slices.example.yml) for **naming patterns** (default [docker-compose.yml](../../docker-compose.yml) keeps WebUI always-on). | N/A |
 | `data` | Postgres only | N/A | Use profile naming from [compose-slices.example.yml](./compose-slices.example.yml) in a local override. | N/A |
 | `llm_proxy` | LiteLLM sidecar | N/A | Same. | N/A |
@@ -41,7 +41,7 @@ The **first** path entry wins for the top-level `maistro` package. Agent spec, r
 | `hive_conductor` | Hive Conductor package (API + UI; base compose under `packages/hive-conductor/`) | `uv pip install -r packages/hive-conductor/backend/requirements.txt` (see package README). | Base file: `packages/hive-conductor/docker-compose.yml`. Optional fragments under `packages/hive-conductor/compose/fragments/`. | N/A |
 | `product_conductor` | Single-tenant multi-user (Conductor-shaped) | Align with downstream repo; engine stays library-only. | Usually product repo’s compose. | Copier: [`templates/single-tenant-multi-user/`](../../templates/single-tenant-multi-user/). |
 | `product_stronghold` | Multi-tenant enterprise | **Not vendored** in this repo — clone Stronghold / use Copier multi-tenant template. | Stronghold’s own charts/compose. | Copier: [`templates/multi-tenant/`](../../templates/multi-tenant/). |
-| `product_turing` | Autonoetic product | AgentTuring repo. | Product compose. | Copier: [`templates/autonoetic/`](../../templates/autonoetic/). |
+| `product_turing` | Autonoetic product | Downstream product repo. | Product compose. | Copier: [`templates/autonoetic/`](../../templates/autonoetic/). |
 
 ---
 

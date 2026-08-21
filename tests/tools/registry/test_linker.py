@@ -84,26 +84,6 @@ def test_multiple_fields_each_checked() -> None:
     assert all(r.resolved for r in results)
 
 
-def test_cross_repo_refs() -> None:
-    # Legacy `ADR-K8S-NNN` form is deprecated per ADR-031 §3 (renumber
-    # on touch); the schema's _REF_PATTERN only accepts `(ADR|SPEC)-\d{3}`.
-    fm = _make_fm(
-        "ADR-030",
-        related=[
-            "AgentTuring#ADR-001",
-            "stronghold#ADR-001",
-        ],
-    )
-    resolver = FakeResolver(
-        known={
-            "AgentTuring": {"ADR-001"},
-            "stronghold": {"ADR-001"},
-        }
-    )
-    results = check_links([fm], resolver)
-    assert all(r.resolved for r in results)
-
-
 def test_unknown_repo_not_resolved() -> None:
     fm = _make_fm("ADR-030", substrate=["maistro-engine#ADR-019"])
     resolver = FakeResolver(known={})
@@ -135,7 +115,7 @@ def test_link_result_render_dangling() -> None:
 
 
 def test_fake_resolver_is_isolated_per_repo() -> None:
-    # ADR-001 exists in maistro-engine but not in AgentTuring
+    # ADR-001 exists in maistro-engine but not under some other repo key
     resolver = FakeResolver(known={"maistro-engine": {"ADR-001"}})
     assert resolver.resolve("maistro-engine", "ADR-001") is True
-    assert resolver.resolve("AgentTuring", "ADR-001") is False
+    assert resolver.resolve("other-repo", "ADR-001") is False

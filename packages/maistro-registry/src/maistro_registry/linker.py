@@ -37,12 +37,9 @@ _RELATIONSHIP_FIELDS: tuple[str, ...] = (
     "blocked_by",
 )
 
-# Default repo → owner mapping for the four-repo system.
+# Repo → GitHub owner mapping used to build links.
 _DEFAULT_REPO_OWNERS: dict[str, str] = {
     "maistro-engine": "BlakeMatthews-dev",
-    "Project_mAIstro": "BlakeMatthews-dev",
-    "AgentTuring": "BlakeMatthews-dev",
-    "stronghold": "agent-stronghold",
 }
 
 

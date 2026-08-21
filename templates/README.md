@@ -2,8 +2,8 @@
 
 This directory holds **scaffold** templates for the three product peers. Each subdirectory is a Copier project with its own `copier.yml`.
 
-- **single-tenant-multi-user** — Conductor / `Project_mAIstro`-shaped knobs (see ADR-033).
-- **autonoetic** — `AgentTuring`-shaped knobs.
+- **single-tenant-multi-user** — Conductor-shaped knobs (see ADR-033).
+- **autonoetic** — autonoetic-agent-shaped knobs.
 - **multi-tenant** — Stronghold-shaped knobs.
 
 Bootstrap round-trip and CI render tests are tracked in [BACKLOG.md](../BACKLOG.md) (engine-010–012). Expand each template with real `pyproject.toml`, compose, and `src/` overlays in follow-up PRs.

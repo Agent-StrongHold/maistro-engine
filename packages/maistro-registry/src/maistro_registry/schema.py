@@ -8,8 +8,8 @@ Required fields:
 - Contracts and tests: contracts, tests
 - Classification: layer, owners
 
-Cross-references use the form `<repo>#<id>` where `<repo>` is one of the
-four-repo system members and `<id>` matches `(ADR|SPEC)-NNN`.
+Cross-references use the form `<repo>#<id>` where `<repo>` is `maistro-engine`
+and `<id>` matches `(ADR|SPEC)-NNN` or the date-based `(ADR|SPEC)-MMDDYY-xxxx`.
 
 Design notes:
 
@@ -80,9 +80,6 @@ class Layer(StrEnum):
 
 class Repo(StrEnum):
     ENGINE = "maistro-engine"
-    MAISTRO = "Project_mAIstro"
-    TURING = "AgentTuring"
-    STRONGHOLD = "stronghold"
 
 
 class Contract(StrEnum):
@@ -97,14 +94,9 @@ class Contract(StrEnum):
 # concurrent PRs, unlike sequential numbering — see ADR-062026-9b30).
 _ID_PATTERN = re.compile(r"^(ADR|SPEC)-(\d{3}|\d{6}-[0-9a-f]{4})$")
 
-# Cross-repo reference pattern: e.g. maistro-engine#ADR-024, maistro-engine#ADR-061526-f383.
-# Other repos may use their own ID scheme (Project_mAIstro uses S-NNN for specs, legacy
-# three-digit only — it hasn't adopted the date-based form), so references accept ADR/SPEC/S;
-# our own IDs stay strict via _ID_PATTERN.
-_REF_PATTERN = re.compile(
-    r"^(maistro-engine|Project_mAIstro|AgentTuring|stronghold)#"
-    r"((ADR|SPEC)-(\d{3}|\d{6}-[0-9a-f]{4})|S-\d{3})$"
-)
+# Reference pattern: e.g. maistro-engine#ADR-024, maistro-engine#ADR-061526-f383.
+# This repo is self-contained; references resolve within it.
+_REF_PATTERN = re.compile(r"^maistro-engine#((ADR|SPEC)-(\d{3}|\d{6}-[0-9a-f]{4}))$")
 
 
 def _is_valid_id(value: str) -> bool:
@@ -138,7 +130,7 @@ class HistoryEntry(BaseModel):
 
 
 class FrontMatter(BaseModel):
-    """Canonical front-matter schema for ADRs and specs across the four-repo system."""
+    """Canonical front-matter schema for ADRs and specs in this repo."""
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
@@ -210,7 +202,7 @@ class FrontMatter(BaseModel):
             if not _is_valid_ref(ref):
                 raise ValueError(
                     f"reference must match `<repo>#<ID>`, got {ref!r}. "
-                    f"Repos: maistro-engine, Project_mAIstro, AgentTuring, stronghold."
+                    f"Repo: maistro-engine."
                 )
         return v
 

@@ -27,8 +27,8 @@ Detail: [`ADR-095`](docs/adr/ADR-095-four-tier-branch-model.md) (supersedes [`AD
 1. Copy [`docs/adr/ADR-000-template.md`](docs/adr/ADR-000-template.md) to `docs/adr/ADR-MMDDYY-xxxx-kebab-title.md`, where `MMDDYY` is today's date and `xxxx` is 4 lowercase hex chars (e.g. `sha1(<title-slug>)[:4]`, or any reproducible/random source) — see [`ADR-062026-9b30`](docs/adr/ADR-062026-9b30-date-based-adr-spec-ids.md). Sequential `ADR-NNN` IDs are frozen; don't mint new ones (existing ones are untouched).
 2. Fill in the YAML front-matter block. Schema and required fields are in [`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md).
 3. Write the body. ADRs are short — context, decision, consequences, status. Keep it under one screen if you can.
-4. If your decision has cross-repo implications, use `<repo>#<id>` references (e.g. `AgentTuring#turing-001`). The registry resolves these.
-5. Add an entry to [`BACKLOG.md`](BACKLOG.md) under the right milestone if implementation work follows. The BACKLOG is the four-repo canonical — your edit lands identically in all four repos.
+4. Reference related decisions with `maistro-engine#<id>` (e.g. `maistro-engine#ADR-031`). The registry resolves these.
+5. Add an entry to [`BACKLOG.md`](BACKLOG.md) under the right milestone if implementation work follows.
 
 Status lifecycle: `Proposed → Accepted → Implemented → Superseded`, plus `Blocked` and `Abandoned`. Per `ADR-031`.
 
@@ -40,16 +40,13 @@ Detail: [`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md) §front-matte
 
 ## How to cite substrate
 
-Use `<repo>#<ID>` in front-matter references, where `<ID>` is `ADR-NNN`/`SPEC-NNN` (legacy, frozen) or `ADR-MMDDYY-xxxx`/`SPEC-MMDDYY-xxxx` (current — see [`ADR-062026-9b30`](docs/adr/ADR-062026-9b30-date-based-adr-spec-ids.md)). Valid repos: `maistro-engine`, `Project_mAIstro`, `AgentTuring`, `stronghold` (the latter three are transitional cross-repo refs while sibling trees consolidate into this monorepo). Examples:
+Use `<repo>#<ID>` in front-matter references, where `<ID>` is `ADR-NNN`/`SPEC-NNN` (legacy, frozen) or `ADR-MMDDYY-xxxx`/`SPEC-MMDDYY-xxxx` (current — see [`ADR-062026-9b30`](docs/adr/ADR-062026-9b30-date-based-adr-spec-ids.md)). The only valid repo is `maistro-engine`. Examples:
 
 - `maistro-engine#ADR-036` — engine architectural decision (legacy ID)
 - `maistro-engine#ADR-061526-f383` — engine architectural decision (current, date-based ID)
 - `maistro-engine#SPEC-178` — engine spec
-- `stronghold#ADR-010` — a Stronghold ADR
 
-`Project_mAIstro` specs use `S-NNN` and haven't adopted the date-based form — keep those references three-digit.
-
-The registry validates these — every reference must match `<repo>#(ADR|SPEC)-(NNN|MMDDYY-xxxx)` (or `<repo>#S-NNN` for `Project_mAIstro`) and resolve to an existing record. (Backlog ids like `engine-001` are a separate concept — they live in [`BACKLOG.md`](BACKLOG.md), not in front-matter refs.)
+The registry validates these — every reference must match `maistro-engine#(ADR|SPEC)-(NNN|MMDDYY-xxxx)` and resolve to an existing record. (Backlog ids like `engine-001` are a separate concept — they live in [`BACKLOG.md`](BACKLOG.md), not in front-matter refs.)
 
 ## Layered contracts (acceptance criteria)
 
@@ -74,7 +71,7 @@ Stronghold's anti-import posture is a supply-chain stance. The rest of the repos
 
 ## Validation
 
-The registry CLI lints front-matter, resolves cross-repo refs, and checks the supersedes/blocks DAG for cycles:
+The registry CLI lints front-matter, resolves references, and checks the supersedes/blocks DAG for cycles:
 
 ```bash
 python -m maistro_registry.cli validate <file>...   # validate specific files
@@ -105,7 +102,7 @@ Imperative mood, one logical change per commit. PR titles include the backlog id
 - [ ] ADR or spec landed (or referenced) for non-trivial decisions
 - [ ] Front-matter present (registry CI green)
 - [ ] Tests at the right layer per `ADR-032`
-- [ ] Cross-repo refs resolve
+- [ ] Front-matter references resolve
 - [ ] BACKLOG entry status updated if shipping closes one
 
 ## Where to ask

@@ -130,17 +130,19 @@ def test_json_keys_are_sorted() -> None:
 
 
 def test_markdown_groups_by_repo() -> None:
-    engine_fm = _make_fm("ADR-001", repo="maistro-engine", title="Engine ADR")
-    turing_fm = _make_fm("ADR-001", repo="AgentTuring", title="Turing ADR")
-    reg = build_registry([engine_fm, turing_fm])
+    # The registry is single-repo, so grouping renders exactly one section --
+    # the header, its per-group count, and the overall tally still come from
+    # the by-repo grouping path.
+    first_fm = _make_fm("ADR-001", repo="maistro-engine", title="Engine ADR")
+    second_fm = _make_fm("ADR-002", repo="maistro-engine", title="Second ADR")
+    reg = build_registry([first_fm, second_fm])
     md = reg.to_markdown()
-    assert "## `AgentTuring` (1 artifacts)" in md
-    assert "## `maistro-engine` (1 artifacts)" in md
+    assert "## `maistro-engine` (2 artifacts)" in md
     # Both titles present
     assert "Engine ADR" in md
-    assert "Turing ADR" in md
-    # Two artifacts overall
-    assert "**2 artifacts** across 2 repos" in md
+    assert "Second ADR" in md
+    # Two artifacts overall, one repo
+    assert "**2 artifacts** across 1 repos" in md
 
 
 def test_markdown_escapes_pipes_in_titles() -> None:

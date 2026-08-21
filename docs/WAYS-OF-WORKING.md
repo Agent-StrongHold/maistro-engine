@@ -64,7 +64,7 @@ Observability · Reliability · Governance · UserClient
 
 ### `repo:` — and cross-references `<repo>#<ID>`
 ```
-maistro-engine · Project_mAIstro · AgentTuring · stronghold
+maistro-engine
 ```
 References in `substrate:` / `related:` must match `<repo>#(ADR|SPEC)-NNN` **and resolve to a
 real record**, or the registry's link check fails. Downstream peers (e.g. `fantasia-engine`)
