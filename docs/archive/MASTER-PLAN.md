@@ -170,7 +170,7 @@ All wrapped as MCP servers using `fastmcp`.
 | Create config.yaml.example | 5 models, 5 task types, routing params, tool definitions, feature flags |
 | Create install/install.sh | Curl-able installer: detect OS, install Docker if needed, create dir, pull images, start stack |
 | Network layout | Internal network for services, exposed ports: 8101 (API+UI), 4000 (LiteLLM), 3100 (Langfuse) |
-| Volumes | postgres-data, redis-data, hive-config (config.yaml persistence) on ZFS (`/vmpool/docker`) |
+| Volumes | postgres-data, redis-data, hive-config (config.yaml persistence) on a persistent Docker volume |
 | Verify | `docker compose up` → all containers healthy → `curl :8101/health` returns OK |
 
 ### Wave 1: Persistence (1 day)

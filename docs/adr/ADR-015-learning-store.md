@@ -69,4 +69,4 @@ Port `InMemoryLearningStore` into `src/maistro/memory/learnings/store.py`. Key f
 
 ## Source references
 
-- `/vmpool/github/stronghold/src/stronghold/memory/learnings/store.py`
+- `stronghold/src/stronghold/memory/learnings/store.py`

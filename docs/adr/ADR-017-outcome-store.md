@@ -63,4 +63,4 @@ Port `InMemoryOutcomeStore` into `src/maistro/memory/outcomes.py`. FIFO eviction
 
 ## Source references
 
-- `/vmpool/github/stronghold/src/stronghold/memory/outcomes.py`
+- `stronghold/src/stronghold/memory/outcomes.py`

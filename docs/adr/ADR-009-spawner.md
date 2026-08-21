@@ -123,5 +123,5 @@ Ultra Think (`parallel_generations > 1`, T9). Multi-model fan-out (T9). Exemplar
 
 ## Source references
 
-- `/vmpool/github/Project_mAIstro/conductor/orchestrator/agents/spawner.py`
-- `/vmpool/github/Project_mAIstro/conductor/orchestrator/agents/structured_output.py`
+- `Project_mAIstro/conductor/orchestrator/agents/spawner.py`
+- `Project_mAIstro/conductor/orchestrator/agents/structured_output.py`

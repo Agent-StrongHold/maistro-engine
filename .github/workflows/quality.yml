@@ -297,7 +297,7 @@ jobs:
 
       # ----- Pillar 1: coverage (line + branch ≥95% on touched files) -----
       # C2/#287: measured over the PyPI publish set (core, canvas, evolve, rsi,
-      # bootstrap — docs/product/V1-RELEASE-PLAN.md's "Decisions of record"),
+      # bootstrap — the PyPI publish set),
       # not maistro-core alone. Each package runs as its own `coverage run
       # --append` invocation rather than one combined pytest call: an earlier
       # attempt at a single `pytest packages/maistro-core/tests

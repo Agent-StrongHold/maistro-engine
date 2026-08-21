@@ -66,5 +66,5 @@ Online migration strategies (zero-downtime). Column-level indices for production
 
 ## Source references
 
-- `/vmpool/github/maistro-engine/alembic/env.py` (existing — update)
-- `/vmpool/github/maistro-engine/alembic/versions/` (add 001 migration)
+- `./alembic/env.py` (existing — update)
+- `./alembic/versions/` (add 001 migration)

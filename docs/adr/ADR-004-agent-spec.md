@@ -164,4 +164,4 @@ class AgentOutput(BaseModel):
 
 ## Source references
 
-- `/vmpool/github/Project_mAIstro/conductor/orchestrator/agents/agent_spec.py`
+- `Project_mAIstro/conductor/orchestrator/agents/agent_spec.py`

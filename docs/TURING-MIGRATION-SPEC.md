@@ -2,8 +2,8 @@
 
 **Date:** 2026-05-08
 **Status:** Draft
-**Source:** `/vmpool/github/stronghold/research/project-turing/sketches/turing/` (AgentTuring)
-**Target:** `/vmpool/github/maistro-engine/packages/maistro-turing/`
+**Source:** `stronghold/research/project-turing/sketches/turing/` (AgentTuring)
+**Target:** `./packages/maistro-turing/`
 **Scope:** Extract AgentTuring from stronghold monorepo into standalone `maistro-turing` package backed by `maistro-core`
 
 ---

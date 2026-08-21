@@ -73,5 +73,5 @@ def reset_engine_cache() -> None: ...               # test helper, clears lru_ca
 
 ## Source references
 
-- `/vmpool/github/maistro-engine/src/maistro/memory/store.py` (existing)
-- `/vmpool/github/maistro-engine/src/maistro/config/settings.py` (`DatabaseSettings`)
+- `./src/maistro/memory/store.py` (existing)
+- `./src/maistro/config/settings.py` (`DatabaseSettings`)

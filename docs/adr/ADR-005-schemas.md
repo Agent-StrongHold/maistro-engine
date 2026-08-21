@@ -99,4 +99,4 @@ def resolve_schema(dotted_path: str) -> type[BaseModel] | None
 
 ## Source references
 
-- `/vmpool/github/Project_mAIstro/conductor/orchestrator/agents/schemas.py`
+- `Project_mAIstro/conductor/orchestrator/agents/schemas.py`

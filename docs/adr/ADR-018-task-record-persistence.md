@@ -57,5 +57,5 @@ All existing queue tests must still pass. The fire-and-forget persistence path i
 
 ## Source references
 
-- `/vmpool/github/maistro-engine/src/maistro/tasks/queue.py`
-- `/vmpool/github/maistro-engine/src/maistro/memory/store.py`
+- `./src/maistro/tasks/queue.py`
+- `./src/maistro/memory/store.py`

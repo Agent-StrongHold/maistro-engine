@@ -170,4 +170,3 @@ be evaluated on those terms.
   version axis is independent of the package version axis defined here
 - [CONTRIBUTING.md](../../CONTRIBUTING.md) — the topic-branch → `develop` →
   `integration` → `main` flow in operational terms
-- `docs/product/V1-RELEASE-PLAN.md` — workstream E

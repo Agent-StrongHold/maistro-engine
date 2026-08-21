@@ -94,6 +94,6 @@ def matches_scope(mem: EpisodicMemory, filters) -> bool: ...  # cross-tenant lea
 
 ## Source references
 
-- `/vmpool/github/stronghold/src/stronghold/types/memory.py`
-- `/vmpool/github/stronghold/src/stronghold/memory/scopes.py`
-- `/vmpool/github/stronghold/src/stronghold/memory/episodic/store.py` (`_matches_scope`)
+- `stronghold/src/stronghold/types/memory.py`
+- `stronghold/src/stronghold/memory/scopes.py`
+- `stronghold/src/stronghold/memory/episodic/store.py` (`_matches_scope`)

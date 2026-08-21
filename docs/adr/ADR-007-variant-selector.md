@@ -86,4 +86,4 @@ Three selection phases: (1) round-robin until `min_samples_before_selection`, (2
 
 ## Source references
 
-- `/vmpool/github/Project_mAIstro/conductor/orchestrator/agents/variant_selector.py`
+- `Project_mAIstro/conductor/orchestrator/agents/variant_selector.py`

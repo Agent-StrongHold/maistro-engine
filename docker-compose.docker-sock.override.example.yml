@@ -6,7 +6,7 @@
 # compromise of the HOST (root-equivalent). This mount was removed from the
 # default stack (June audit 3.1); only use this override on a machine you
 # accept that risk on, and prefer an isolated sandbox backend (deploy/sbx,
-# microVM) — see docs/product/V1-RELEASE-PLAN.md item F2.
+# microVM) (see deploy/sbx for the sandboxed alternative).
 #
 # Usage:
 #   docker compose -f docker-compose.yml \

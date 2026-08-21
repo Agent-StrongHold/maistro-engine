@@ -105,5 +105,5 @@ Langfuse prompt sync (Project_mAIstro specific). Hot-reload (T5 skill catalog).
 
 ## Source references
 
-- `/vmpool/github/Project_mAIstro/conductor/orchestrator/agents/recipe.py`
-- `/vmpool/github/Project_mAIstro/conductor/orchestrator/agents/recipes/` (YAML files)
+- `Project_mAIstro/conductor/orchestrator/agents/recipe.py`
+- `Project_mAIstro/conductor/orchestrator/agents/recipes/` (YAML files)

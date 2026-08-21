@@ -79,4 +79,4 @@ Preemption of running tasks (not safe to implement without cooperative yield poi
 
 ## Source references
 
-- `/vmpool/github/Project_mAIstro/conductor/orchestrator/agents/agent_spec.py:Lane`
+- `Project_mAIstro/conductor/orchestrator/agents/agent_spec.py:Lane`

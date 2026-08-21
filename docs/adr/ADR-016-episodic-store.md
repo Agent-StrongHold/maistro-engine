@@ -72,5 +72,5 @@ Port `InMemoryEpisodicStore` + `tiers.py` (clamp_weight, reinforce, decay) into 
 
 ## Source references
 
-- `/vmpool/github/stronghold/src/stronghold/memory/episodic/store.py`
-- `/vmpool/github/stronghold/src/stronghold/memory/episodic/tiers.py`
+- `stronghold/src/stronghold/memory/episodic/store.py`
+- `stronghold/src/stronghold/memory/episodic/tiers.py`

@@ -72,4 +72,4 @@ Create `src/maistro/protocols/memory.py` with `LearningStore`, `EpisodicStore`, 
 
 ## Source references
 
-- `/vmpool/github/stronghold/src/stronghold/protocols/memory.py`
+- `stronghold/src/stronghold/protocols/memory.py`

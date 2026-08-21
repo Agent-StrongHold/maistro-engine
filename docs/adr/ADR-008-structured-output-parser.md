@@ -81,4 +81,4 @@ class StructuredOutputParser:
 
 ## Source references
 
-- `/vmpool/github/Project_mAIstro/conductor/orchestrator/agents/structured_output.py`
+- `Project_mAIstro/conductor/orchestrator/agents/structured_output.py`
