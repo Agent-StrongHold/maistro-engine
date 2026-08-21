@@ -75,10 +75,13 @@ class SecurityConfig(BaseModel):
         return value
 
     # Selects a maistro.security.permission_policy.PERMISSION_PRESETS entry.
-    # Default arms the dangerous-tools-admin gate: dangerous tool names require
-    # the admin role, while every other tool stays permitted-by-absence (formal
-    # invariant I6). Set to "none" to disable even that gate.
-    permission_preset: str = "dangerous_tools_admin"
+    # Deliberately "none" (empty table = permissive) at shipped defaults: the
+    # "armable, not armed" posture is an ADR-backed design decision
+    # (ADR-072726-0d6b), not an oversight. Arming a preset by default risks
+    # locking a single-user homelab owner out of their own dangerous tools;
+    # do it explicitly per that ADR's preconditions. Tracked in
+    # docs/audit/SECURITY-REMEDIATION-BACKLOG.md.
+    permission_preset: str = "none"
     # Explicit tool_name -> [role, ...] overrides, applied on top of the preset.
     permissions: dict[str, list[str]] = Field(default_factory=dict)
     # Defaults False: no admin unlock path exists yet for the 3-strike ladder
