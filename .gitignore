@@ -55,10 +55,7 @@ node_modules/
 
 # Frozen snapshots — do not commit at repo root (see docs/specs/SPEC-178-legacy-snapshot-retention.md).
 # These patterns block accidental re-vendoring of large snapshot trees at repo root.
-code-worth-implementing-from-dev-ai-env/
-code-worth-implementing-from-n8n_automation/
-code-worth-implementing-from-Owui_mods/
-code-worth-implementing-from-Project-mAIstro/
+code-worth-implementing-from-*/
 
 # Materialized installer plan + staged bootstrap credentials (install.sh)
 .maistro-install/
