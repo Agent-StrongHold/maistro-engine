@@ -90,7 +90,7 @@ async def test_scan_skips_llm_layer_for_user_input_boundary_even_with_llm() -> N
 async def test_scan_llm_layer_flags_suspicious_classification_for_tool_result() -> None:
     llm = _StubLLMClient(
         response={
-            "choices": [{"message": {"content": "this is suspicious"}}],
+            "choices": [{"message": {"content": "suspicious"}}],
             "usage": {"total_tokens": 12},
         }
     )
@@ -103,18 +103,46 @@ async def test_scan_llm_layer_flags_suspicious_classification_for_tool_result() 
     assert len(llm.calls) == 1
 
 
-async def test_scan_llm_layer_returns_clean_when_classification_is_safe() -> None:
-    llm = _StubLLMClient(response={"choices": [{"message": {"content": "looks safe"}}]})
+async def test_scan_llm_layer_returns_clean_when_classification_is_exact_safe() -> None:
+    llm = _StubLLMClient(response={"choices": [{"message": {"content": "safe"}}]})
     warden = Warden(llm=llm, classifier_model="gpt")
     verdict = await warden.scan("clean tool output", "tool_result")
     assert verdict.clean is True
 
 
-async def test_scan_llm_layer_swallows_classification_exception_and_returns_clean() -> None:
+async def test_scan_llm_layer_fails_closed_on_provider_failure() -> None:
     llm = _StubLLMClient(error=RuntimeError("llm backend down"))
     warden = Warden(llm=llm, classifier_model="gpt")
     verdict = await warden.scan("clean tool output", "tool_result")
-    assert verdict.clean is True
+    assert verdict.clean is False
+    assert any("llm_classification:suspicious" in flag for flag in verdict.flags)
+    assert verdict.reasoning_trace == "llm_judge_inconclusive:classification_failed"
+
+
+async def test_scan_llm_layer_fails_closed_on_timeout() -> None:
+    llm = _StubLLMClient(error=TimeoutError("judge timeout"))
+    warden = Warden(llm=llm, classifier_model="gpt")
+    verdict = await warden.scan("clean tool output", "tool_result")
+    assert verdict.clean is False
+    assert verdict.reasoning_trace == "llm_judge_inconclusive:classification_failed"
+
+
+async def test_scan_llm_layer_fails_closed_on_malformed_response() -> None:
+    llm = _StubLLMClient(response={"choices": []})
+    warden = Warden(llm=llm, classifier_model="gpt")
+    verdict = await warden.scan("clean tool output", "tool_result")
+    assert verdict.clean is False
+    assert verdict.reasoning_trace == "llm_judge_inconclusive:malformed_response"
+
+
+async def test_scan_llm_layer_fails_closed_on_partial_classification() -> None:
+    llm = _StubLLMClient(
+        response={"choices": [{"message": {"content": "safe, but I am not completely sure"}}]}
+    )
+    warden = Warden(llm=llm, classifier_model="gpt")
+    verdict = await warden.scan("clean tool output", "tool_result")
+    assert verdict.clean is False
+    assert verdict.reasoning_trace == "llm_judge_inconclusive:malformed_response"
 
 
 async def test_scan_chunks_content_longer_than_window_size_and_finds_pattern() -> None:
