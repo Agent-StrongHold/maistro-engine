@@ -7,8 +7,6 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
 
-from maistro.constants import TOOL_ARGUMENT_MAX_BYTES, TOOL_ARGUMENT_MAX_DEPTH
-
 
 class RoutingConfig(BaseModel):
     """Model routing parameters."""
@@ -57,10 +55,6 @@ class SecurityConfig(BaseModel):
     warden_enabled: bool = True
     gate_query_improve: bool = True
     gate_model: str = "auto"
-    # Sentinel's pre-schema JSON-bomb/resource gate. Lower values tighten the
-    # deployment. Raising either default requires an explicit config change.
-    tool_argument_max_bytes: int = Field(default=TOOL_ARGUMENT_MAX_BYTES, ge=1024)
-    tool_argument_max_depth: int = Field(default=TOOL_ARGUMENT_MAX_DEPTH, ge=4)
 
     @field_validator("warden_enabled")
     @classmethod
