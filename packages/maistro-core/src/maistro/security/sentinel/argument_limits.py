@@ -10,10 +10,44 @@ bounded before schema validation or execution.
 from __future__ import annotations
 
 import json
+import os
+from dataclasses import dataclass
 from typing import Any
 
 from maistro.constants import TOOL_ARGUMENT_MAX_BYTES, TOOL_ARGUMENT_MAX_DEPTH
 from maistro.security._types import Violation
+
+_TOOL_ARGUMENT_MAX_BYTES_ENV = "MAISTRO_TOOL_ARGUMENT_MAX_BYTES"
+_TOOL_ARGUMENT_MAX_DEPTH_ENV = "MAISTRO_TOOL_ARGUMENT_MAX_DEPTH"
+
+
+def _positive_int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a positive integer, got {raw!r}") from exc
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive integer, got {value}")
+    return value
+
+
+@dataclass(frozen=True)
+class ToolArgumentLimits:
+    """Effective deployment policy for one Sentinel instance."""
+
+    max_bytes: int = TOOL_ARGUMENT_MAX_BYTES
+    max_depth: int = TOOL_ARGUMENT_MAX_DEPTH
+
+    @classmethod
+    def from_environment(cls) -> ToolArgumentLimits:
+        """Read explicit deployment overrides; invalid policy fails startup loudly."""
+        return cls(
+            max_bytes=_positive_int_env(_TOOL_ARGUMENT_MAX_BYTES_ENV, TOOL_ARGUMENT_MAX_BYTES),
+            max_depth=_positive_int_env(_TOOL_ARGUMENT_MAX_DEPTH_ENV, TOOL_ARGUMENT_MAX_DEPTH),
+        )
 
 
 def _structural_depth(value: object, *, stop_after: int) -> int:
@@ -35,8 +69,7 @@ def _structural_depth(value: object, *, stop_after: int) -> int:
 def check_argument_limits(
     args: dict[str, Any],
     *,
-    max_bytes: int = TOOL_ARGUMENT_MAX_BYTES,
-    max_depth: int = TOOL_ARGUMENT_MAX_DEPTH,
+    limits: ToolArgumentLimits,
 ) -> Violation | None:
     """Return an error violation when tool arguments exceed configured limits.
 
@@ -45,13 +78,15 @@ def check_argument_limits(
     matching the wire representation closely enough to make ASCII, Unicode, and
     encoded-string payloads obey the same byte ceiling.
     """
-    depth = _structural_depth(args, stop_after=max_depth)
-    if depth > max_depth:
+    depth = _structural_depth(args, stop_after=limits.max_depth)
+    if depth > limits.max_depth:
         return Violation(
-            boundary="system_to_tool",
+            boundary="pre_call",
             rule="tool_argument_depth_limit",
             severity="error",
-            detail=f"Tool arguments depth {depth} exceeds configured maximum {max_depth}",
+            detail=(
+                f"Tool arguments depth {depth} exceeds configured maximum {limits.max_depth}"
+            ),
         )
 
     try:
@@ -63,18 +98,20 @@ def check_argument_limits(
         ).encode("utf-8")
     except (TypeError, ValueError, RecursionError):
         return Violation(
-            boundary="system_to_tool",
+            boundary="pre_call",
             rule="tool_argument_not_json",
             severity="error",
             detail="Tool arguments are not valid JSON-compatible data",
         )
 
     size = len(encoded)
-    if size > max_bytes:
+    if size > limits.max_bytes:
         return Violation(
-            boundary="system_to_tool",
+            boundary="pre_call",
             rule="tool_argument_size_limit",
             severity="error",
-            detail=f"Tool arguments size {size} bytes exceeds configured maximum {max_bytes}",
+            detail=(
+                f"Tool arguments size {size} bytes exceeds configured maximum {limits.max_bytes}"
+            ),
         )
     return None
