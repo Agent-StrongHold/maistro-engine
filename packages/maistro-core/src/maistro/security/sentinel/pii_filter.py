@@ -77,8 +77,6 @@ def _ssn_ok(candidate: str) -> bool:
     return group != "00" and serial != "0000"
 
 
-# (type, pattern, validator). A validator narrows a shape-match to a real hit;
-# None means the pattern alone is specific enough.
 _PII_PATTERNS: list[tuple[str, re.Pattern[str], Callable[[str], bool] | None]] = [
     ("aws_key", re.compile(r"AKIA[0-9A-Z]{16}"), None),
     ("github_token", re.compile(r"(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}"), None),
@@ -95,7 +93,11 @@ _PII_PATTERNS: list[tuple[str, re.Pattern[str], Callable[[str], bool] | None]] =
         ),
         None,
     ),
-    ("jwt", re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"), None),
+    (
+        "jwt",
+        re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"),
+        None,
+    ),
     (
         "connection_string",
         re.compile(
@@ -124,16 +126,8 @@ _PII_PATTERNS: list[tuple[str, re.Pattern[str], Callable[[str], bool] | None]] =
         ),
         None,
     ),
-    (
-        "payment_card",
-        re.compile(r"\b\d(?:[ -]?\d){12,18}\b"),
-        _luhn_ok,
-    ),
-    (
-        "ssn",
-        re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
-        _ssn_ok,
-    ),
+    ("payment_card", re.compile(r"\b\d(?:[ -]?\d){12,18}\b"), _luhn_ok),
+    ("ssn", re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), _ssn_ok),
     (
         "phone",
         re.compile(r"\+\d{1,3}[ -]?\(?\d{1,4}\)?(?:[ -]?\d{2,4}){2,4}"),
@@ -148,7 +142,7 @@ _PERCENT_TOKEN = re.compile(
     r"(?:(?:%[0-9A-Fa-f]{2})|[A-Za-z0-9._~:/?@!$&'()*+,;=\-]){8,}"
 )
 _BASE64_TOKEN = re.compile(
-    r"(?<![A-Za-z0-9+/_=\-])[A-Za-z0-9+/_\-]{16,}={0,2}(?![A-Za-z0-9+/_=\-])"
+    r"(?<![A-Za-z0-9+/_\-])[A-Za-z0-9+/_\-]{16,}={0,2}(?![A-Za-z0-9+/_=\-])"
 )
 
 
@@ -190,7 +184,11 @@ def _append_match(
     start: int,
     end: int,
 ) -> None:
-    if any(not (end <= existing_start or start >= existing_end) for existing_start, existing_end in seen_ranges):
+    overlaps = any(
+        not (end <= existing_start or start >= existing_end)
+        for existing_start, existing_end in seen_ranges
+    )
+    if overlaps:
         return
     matches.append(
         PIIMatch(
