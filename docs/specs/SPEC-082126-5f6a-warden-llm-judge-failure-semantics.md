@@ -22,7 +22,6 @@ blocks: []
 blocked-by: []
 contracts:
   - behavioral
-  - security
 tests:
   - packages/maistro-core/tests/security/warden/test_detector.py
 source:
