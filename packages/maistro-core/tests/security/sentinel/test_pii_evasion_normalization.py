@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import base64
 import unicodedata
-from dataclasses import dataclass
-from typing import Any
 
 import pytest
 
