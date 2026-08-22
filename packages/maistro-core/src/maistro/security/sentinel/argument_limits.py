@@ -12,10 +12,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from maistro.constants import TOOL_ARGUMENT_MAX_BYTES, TOOL_ARGUMENT_MAX_DEPTH
 from maistro.security._types import Violation
-
-DEFAULT_MAX_TOOL_ARGUMENT_BYTES = 100 * 1024
-DEFAULT_MAX_TOOL_ARGUMENT_DEPTH = 32
 
 
 def _structural_depth(value: object, *, stop_after: int) -> int:
@@ -37,10 +35,10 @@ def _structural_depth(value: object, *, stop_after: int) -> int:
 def check_argument_limits(
     args: dict[str, Any],
     *,
-    max_bytes: int = DEFAULT_MAX_TOOL_ARGUMENT_BYTES,
-    max_depth: int = DEFAULT_MAX_TOOL_ARGUMENT_DEPTH,
+    max_bytes: int = TOOL_ARGUMENT_MAX_BYTES,
+    max_depth: int = TOOL_ARGUMENT_MAX_DEPTH,
 ) -> Violation | None:
-    """Return an error violation when tool arguments exceed the configured floor.
+    """Return an error violation when tool arguments exceed configured limits.
 
     Depth is checked first without recursion so deeply nested payloads are
     rejected before JSON serialization. Size is measured as compact UTF-8 JSON,
