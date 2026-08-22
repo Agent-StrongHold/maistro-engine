@@ -46,6 +46,7 @@ def test_ordinary_arguments_are_within_default_limits() -> None:
     )
 
 
+@pytest.mark.ac("SPEC-082126-7a31/AC-3")
 def test_nested_objects_over_depth_limit_are_rejected_before_serialization(monkeypatch: Any) -> None:
     import maistro.security.sentinel.argument_limits as limits_module
 
@@ -82,6 +83,7 @@ def test_huge_string_is_rejected_by_utf8_json_byte_limit() -> None:
     assert "100" in violation.detail
 
 
+@pytest.mark.ac("SPEC-082126-7a31/AC-4")
 def test_encoded_payload_does_not_bypass_byte_limit() -> None:
     encoded = base64.b64encode(b"A" * 256).decode("ascii")
     violation = check_argument_limits(
@@ -101,6 +103,7 @@ def test_utf8_bytes_not_python_character_count_are_limited() -> None:
     assert violation.rule == "tool_argument_size_limit"
 
 
+@pytest.mark.ac("SPEC-082126-7a31/AC-6")
 def test_non_json_arguments_fail_closed() -> None:
     violation = check_argument_limits(
         {"bad": {1, 2, 3}},
@@ -110,6 +113,7 @@ def test_non_json_arguments_fail_closed() -> None:
     assert violation.rule == "tool_argument_not_json"
 
 
+@pytest.mark.ac("SPEC-082126-7a31/AC-5")
 def test_environment_overrides_are_explicit_deployment_policy(monkeypatch: Any) -> None:
     monkeypatch.setenv("MAISTRO_TOOL_ARGUMENT_MAX_BYTES", "2048")
     monkeypatch.setenv("MAISTRO_TOOL_ARGUMENT_MAX_DEPTH", "12")
@@ -123,6 +127,7 @@ def test_invalid_environment_policy_fails_loudly(monkeypatch: Any) -> None:
         ToolArgumentLimits.from_environment()
 
 
+@pytest.mark.ac("SPEC-082126-7a31/AC-2")
 async def test_sentinel_denies_and_audits_oversized_arguments() -> None:
     audit = _AuditLog()
     sentinel = Sentinel(
@@ -143,6 +148,7 @@ async def test_sentinel_denies_and_audits_oversized_arguments() -> None:
     assert "configured maximum 80" in audit.entries[0].detail
 
 
+@pytest.mark.ac("SPEC-082126-7a31/AC-1")
 async def test_sentinel_preserves_normal_valid_tool_call_behavior() -> None:
     audit = _AuditLog()
     sentinel = Sentinel(
