@@ -23,7 +23,6 @@ blocks: []
 blocked-by: []
 contracts:
   - behavioral
-  - security
 tests:
   - packages/maistro-core/tests/security/sentinel/test_argument_limits.py
 source:
